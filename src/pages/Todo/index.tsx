@@ -30,20 +30,36 @@ export default function TodoPage() {
     return unit ? unit.name : '未知单位';
   };
 
-  const handleHazardClick = () => {
-    navigate('/hazards');
+  const handleHazardClick = (hazardId?: string) => {
+    if (hazardId) {
+      navigate(`/hazards?highlightId=${hazardId}`);
+    } else {
+      navigate('/hazards');
+    }
   };
 
-  const handlePlanClick = () => {
-    navigate('/inspections');
+  const handlePlanClick = (planId?: string) => {
+    if (planId) {
+      navigate(`/inspections?highlightId=${planId}`);
+    } else {
+      navigate('/inspections');
+    }
   };
 
-  const handleSelfCheckClick = () => {
-    navigate('/self-check');
+  const handleSelfCheckClick = (recordId?: string) => {
+    if (recordId) {
+      navigate(`/self-check?highlightId=${recordId}`);
+    } else {
+      navigate('/self-check');
+    }
   };
 
-  const handleReportClick = () => {
-    navigate('/reports');
+  const handleReportClick = (reportId?: string) => {
+    if (reportId) {
+      navigate(`/reports?highlightId=${reportId}`);
+    } else {
+      navigate('/reports');
+    }
   };
 
   return (
@@ -88,7 +104,7 @@ export default function TodoPage() {
               </div>
             </div>
             <button
-              onClick={handleHazardClick}
+              onClick={() => handleHazardClick()}
               className="inline-flex items-center gap-1 text-sm text-red-600 hover:text-red-700 font-medium"
             >
               查看全部
@@ -100,7 +116,7 @@ export default function TodoPage() {
               pendingHazards.slice(0, 5).map((hazard: Hazard) => (
                 <div
                   key={hazard.id}
-                  onClick={handleHazardClick}
+                  onClick={() => handleHazardClick(hazard.id)}
                   className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   <div className="flex items-start justify-between">
@@ -148,7 +164,7 @@ export default function TodoPage() {
               </div>
             </div>
             <button
-              onClick={handlePlanClick}
+              onClick={() => handlePlanClick()}
               className="inline-flex items-center gap-1 text-sm text-amber-600 hover:text-amber-700 font-medium"
             >
               查看全部
@@ -160,7 +176,7 @@ export default function TodoPage() {
               pendingPlans.slice(0, 5).map((plan: InspectionPlan) => (
                 <div
                   key={plan.id}
-                  onClick={handlePlanClick}
+                  onClick={() => handlePlanClick(plan.id)}
                   className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   <div className="flex items-start justify-between">
@@ -205,7 +221,7 @@ export default function TodoPage() {
               </div>
             </div>
             <button
-              onClick={handleSelfCheckClick}
+              onClick={() => handleSelfCheckClick()}
               className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium"
             >
               查看全部
@@ -217,7 +233,7 @@ export default function TodoPage() {
               pendingSelfChecks.slice(0, 5).map((record: SelfCheckRecord) => (
                 <div
                   key={record.id}
-                  onClick={handleSelfCheckClick}
+                  onClick={() => handleSelfCheckClick(record.id)}
                   className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   <div className="flex items-start justify-between">
@@ -262,7 +278,7 @@ export default function TodoPage() {
               </div>
             </div>
             <button
-              onClick={handleReportClick}
+              onClick={() => handleReportClick()}
               className="inline-flex items-center gap-1 text-sm text-green-600 hover:text-green-700 font-medium"
             >
               查看全部
@@ -274,7 +290,7 @@ export default function TodoPage() {
               pendingReports.slice(0, 5).map((report: Report) => (
                 <div
                   key={report.id}
-                  onClick={handleReportClick}
+                  onClick={() => handleReportClick(report.id)}
                   className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   <div className="flex items-start justify-between">

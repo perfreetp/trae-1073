@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
   Clock,
@@ -25,7 +26,8 @@ import { useAppStore } from '@/store';
 import type { Hazard, RecheckRecord } from '@/types';
 
 export default function HazardsPage() {
-  const { hazards, units, updateHazard, addHazard } = useAppStore();
+  const { hazards, units, inspectionPlans, updateHazard, addHazard } = useAppStore();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [levelFilter, setLevelFilter] = useState<string>('all');
@@ -65,6 +67,12 @@ export default function HazardsPage() {
   const getUnitName = (unitId: string) => {
     const unit = units.find((u) => u.id === unitId);
     return unit ? unit.name : '未知单位';
+  };
+
+  const getInspectionPlanName = (inspectionId?: string) => {
+    if (!inspectionId) return '-';
+    const plan = inspectionPlans.find((p) => p.id === inspectionId);
+    return plan ? plan.name : '-';
   };
 
   const getLevelColor = (level: string) => {
@@ -164,6 +172,17 @@ export default function HazardsPage() {
     setSelectedHazard(hazard);
     setShowDetailModal(true);
   };
+
+  useEffect(() => {
+    const highlightId = searchParams.get('highlightId');
+    if (highlightId) {
+      const hazard = hazards.find((h) => h.id === highlightId);
+      if (hazard) {
+        openDetail(hazard);
+        setSearchParams({}, { replace: true });
+      }
+    }
+  }, [hazards, searchParams, setSearchParams]);
 
   const getTimelineData = (hazard: Hazard) => {
     const timeline = [
@@ -430,7 +449,7 @@ export default function HazardsPage() {
                       >
                         <Eye className="w-4 h-4" />
                       </button>
-                      {hazard.status === '待整改' && (
+                      {(hazard.status === '待整改' || hazard.status === '整改中') && (
                         <button
                           onClick={() => {
                             setSelectedHazard(hazard);
@@ -504,6 +523,10 @@ export default function HazardsPage() {
                   <div>
                     <label className="text-sm font-medium text-slate-500">所属单位</label>
                     <p className="mt-1 text-slate-800">{getUnitName(selectedHazard.unitId)}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-slate-500">来源检查计划</label>
+                    <p className="mt-1 text-slate-800">{getInspectionPlanName(selectedHazard.inspectionId)}</p>
                   </div>
                 </div>
 
@@ -707,7 +730,7 @@ export default function HazardsPage() {
                 >
                   关闭
                 </button>
-                {selectedHazard.status === '待整改' && (
+                {(selectedHazard.status === '待整改' || selectedHazard.status === '整改中') && (
                   <button
                     onClick={() => {
                       setShowDetailModal(false);

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   FileCheck,
   Plus,
@@ -36,6 +37,7 @@ const defaultCheckItems: Omit<SelfCheckItem, 'id'>[] = [
 
 export default function SelfCheckPage() {
   const { selfCheckRecords, units, addSelfCheckRecord, updateSelfCheckRecord, addHazard } = useAppStore();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [unitFilter, setUnitFilter] = useState<string>('all');
@@ -46,6 +48,18 @@ export default function SelfCheckPage() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [showConvertConfirm, setShowConvertConfirm] = useState(false);
+
+  useEffect(() => {
+    const highlightId = searchParams.get('highlightId');
+    if (highlightId) {
+      const record = selfCheckRecords.find((r) => r.id === highlightId);
+      if (record) {
+        setSelectedRecord(record);
+        setShowDetailModal(true);
+        setSearchParams({}, { replace: true });
+      }
+    }
+  }, [selfCheckRecords, searchParams, setSearchParams]);
 
   const [newRecord, setNewRecord] = useState({
     unitId: '',
@@ -151,12 +165,14 @@ export default function SelfCheckPage() {
     const unqualifiedItems = getUnqualifiedItems(selectedRecord);
     if (unqualifiedItems.length === 0) return;
 
-    unqualifiedItems.forEach((item: any) => {
+    const timestamp = Date.now();
+    unqualifiedItems.forEach((item: any, index: number) => {
       const description = item.remark
         ? `${item.question} - 不合格（${item.remark}）`
         : `${item.question} - 不合格`;
 
-      const hazard: Omit<Hazard, 'id'> = {
+      const hazard: Hazard = {
+        id: `h${timestamp}_${index}`,
         unitId: selectedRecord.unitId,
         description,
         location: selectedRecord.unitName,
@@ -169,7 +185,7 @@ export default function SelfCheckPage() {
         responsiblePhone: selectedRecord.checkerPhone
       };
 
-      addHazard(hazard as Hazard);
+      addHazard(hazard);
     });
 
     setShowConvertConfirm(false);

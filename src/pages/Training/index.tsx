@@ -143,6 +143,7 @@ export default function TrainingPage() {
           trainingId: newTraining.id,
           name: attendee.name,
           unit: attendee.unit,
+          phone: attendee.phone,
           status: '未签到'
         });
       }
@@ -974,6 +975,9 @@ function TrainingDetailModal({
                         单位
                       </th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase">
+                        联系电话
+                      </th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase">
                         签到时间
                       </th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase">
@@ -999,6 +1003,9 @@ function TrainingDetailModal({
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-sm text-slate-700">{attendee.unit}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-sm text-slate-700">{attendee.phone || '-'}</span>
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-sm text-slate-700">
@@ -1691,6 +1698,11 @@ function SignInModal({
   onClose: () => void;
   onSignIn: (attendeeId: string, action: 'signin' | 'signout') => void;
 }) {
+  const handleSignInClick = (e: React.MouseEvent, attendeeId: string, action: 'signin' | 'signout') => {
+    e.stopPropagation();
+    onSignIn(attendeeId, action);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
@@ -1721,13 +1733,16 @@ function SignInModal({
                   <div>
                     <p className="text-sm font-medium text-slate-800">{attendee.name}</p>
                     <p className="text-xs text-slate-500">{attendee.unit}</p>
+                    {attendee.phone && (
+                      <p className="text-xs text-slate-400 mt-0.5">{attendee.phone}</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusTag status={attendee.status} variant="attendee" />
                   {attendee.status === '未签到' && (
                     <button
-                      onClick={() => onSignIn(attendee.id, 'signin')}
+                      onClick={(e) => handleSignInClick(e, attendee.id, 'signin')}
                       className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 transition-colors"
                     >
                       <LogIn className="w-3.5 h-3.5" />
@@ -1736,7 +1751,7 @@ function SignInModal({
                   )}
                   {attendee.status === '已签到' && (
                     <button
-                      onClick={() => onSignIn(attendee.id, 'signout')}
+                      onClick={(e) => handleSignInClick(e, attendee.id, 'signout')}
                       className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 transition-colors"
                     >
                       <LogOut className="w-3.5 h-3.5" />

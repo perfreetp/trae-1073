@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Calendar,
   Table,
@@ -46,6 +47,8 @@ export default function InspectionsPage() {
     addHazard
   } = useAppStore();
 
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedPlan, setSelectedPlan] = useState<InspectionPlan | null>(null);
@@ -84,6 +87,17 @@ export default function InspectionsPage() {
   const pendingPlans = inspectionPlans.filter((p) => p.status === '未开始').length;
   const inProgressPlans = inspectionPlans.filter((p) => p.status === '进行中').length;
   const completedPlans = inspectionPlans.filter((p) => p.status === '已完成').length;
+
+  useEffect(() => {
+    const highlightId = searchParams.get('highlightId');
+    if (highlightId) {
+      const plan = inspectionPlans.find((p) => p.id === highlightId);
+      if (plan) {
+        setSelectedPlan(plan);
+        setSearchParams({}, { replace: true });
+      }
+    }
+  }, [inspectionPlans, searchParams, setSearchParams]);
 
   const getUnitNames = (unitIds: string[]) => {
     return unitIds
@@ -235,7 +249,10 @@ export default function InspectionsPage() {
     const unqualifiedItems = mockCheckLists[0].items
       .map((item) => {
         const answer = answers.find((a) => a.itemId === item.id);
-        const isUnqualified = answer?.answer === '不合格' || (answer?.remark && answer.remark.includes('隐患'));
+        const isUnqualified = 
+          answer?.answer === '不合格' || 
+          answer?.answer === '否' || 
+          (answer?.remark && (answer.remark.includes('隐患') || answer.remark.includes('不合格')));
         return { item, answer, isUnqualified };
       })
       .filter(({ isUnqualified }) => isUnqualified);

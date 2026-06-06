@@ -132,6 +132,7 @@ export interface AttendeeRecord {
   trainingId: string;
   name: string;
   unit: string;
+  phone?: string;
   signInTime?: string;
   signOutTime?: string;
   status: '已签到' | '未签到' | '已签退';

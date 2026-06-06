@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Search,
   Filter,
@@ -45,6 +46,7 @@ const handleFlowSteps: FlowStep[] = [
 const mockHandlers = ['王专干', '李消防', '赵监督员', '张科员'];
 
 export default function ReportsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [reports, setReports] = useState<Report[]>(mockReports);
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -89,6 +91,17 @@ export default function ReportsPage() {
     setSelectedReport(report);
     setShowDetailModal(true);
   };
+
+  useEffect(() => {
+    const highlightId = searchParams.get('highlightId');
+    if (highlightId) {
+      const report = reports.find((r) => r.id === highlightId);
+      if (report) {
+        handleViewDetail(report);
+        setSearchParams({}, { replace: true });
+      }
+    }
+  }, [reports, searchParams, setSearchParams]);
 
   const handleRegister = () => {
     if (!registerForm.title || !registerForm.location || !registerForm.description) return;
