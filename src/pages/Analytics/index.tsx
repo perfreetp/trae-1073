@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, AreaChart, Area
@@ -11,62 +11,214 @@ import {
 import { StatsCard } from '@/components/common/StatsCard';
 import { useAppStore } from '@/store';
 import {
-  mockAreaStats, mockMonthlyStats, mockHazards, mockRedYellowCards, mockUnits
+  mockRedYellowCards
 } from '@/utils/mock';
+import type { UnitType } from '@/types';
 
 const COLORS = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
 
-const duplicateHazardTypes = [
-  { name: '消防通道堵塞', count: 42, percentage: 28 },
-  { name: '灭火器过期', count: 36, percentage: 24 },
-  { name: '应急照明损坏', count: 28, percentage: 19 },
-  { name: '疏散指示缺失', count: 22, percentage: 15 },
-  { name: '电气线路隐患', count: 15, percentage: 10 },
-  { name: '其他', count: 6, percentage: 4 }
-];
+const unitTypes: (UnitType | 'all')[] = ['all', '商场', '酒店', '工厂', '学校', '医院', '住宅小区', '其他'];
 
-const overdueSupervision = [
-  { name: '中山路街道', count: 12, level: '重大' },
-  { name: '解放路街道', count: 8, level: '较大' },
-  { name: '人民路街道', count: 6, level: '较大' },
-  { name: '长江路街道', count: 4, level: '一般' },
-  { name: '学府路街道', count: 2, level: '一般' }
-];
-
-const areaRankData = mockAreaStats.map((item, index) => ({
-  ...item,
-  rank: index + 1
-})).sort((a, b) => b.hazardCount - a.hazardCount);
-
-const hazardTypeDistribution = [
-  { name: '一般隐患', value: 156, color: '#10b981' },
-  { name: '较大隐患', value: 89, color: '#f59e0b' },
-  { name: '重大隐患', value: 23, color: '#ef4444' }
-];
-
-const unitTypeDistribution = [
-  { name: '商场', count: 45 },
-  { name: '酒店', count: 32 },
-  { name: '工厂', count: 58 },
-  { name: '学校', count: 28 },
-  { name: '医院', count: 15 },
-  { name: '住宅小区', count: 72 },
-  { name: '其他', count: 20 }
-];
+const getDefaultDateRange = () => {
+  const end = new Date();
+  const start = new Date();
+  start.setMonth(start.getMonth() - 3);
+  return {
+    startDate: start.toISOString().split('T')[0],
+    endDate: end.toISOString().split('T')[0]
+  };
+};
 
 export default function AnalyticsPage() {
-  const [selectedPeriod, setSelectedPeriod] = useState('本月');
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const defaultDates = getDefaultDateRange();
+  const [startDate, setStartDate] = useState(defaultDates.startDate);
+  const [endDate, setEndDate] = useState(defaultDates.endDate);
+  const [unitType, setUnitType] = useState<UnitType | 'all'>('all');
 
-  const { hazards, inspectionPlans, selfCheckRecords, units } = useAppStore();
+  const { hazards, inspectionPlans, selfCheckRecords, units, reports } = useAppStore();
 
-  const totalHazards = mockHazards.length;
-  const overdueCount = mockHazards.filter(h => h.status === '已逾期').length;
-  const rectificationRate = Math.round(
-    (mockHazards.filter(h => h.status === '已完成').length / totalHazards) * 100
-  );
+  const filteredHazards = useMemo(() => {
+    return hazards.filter(h => {
+      const inDateRange = h.foundDate >= startDate && h.foundDate <= endDate;
+      return inDateRange;
+    });
+  }, [hazards, startDate, endDate]);
+
+  const filteredUnits = useMemo(() => {
+    return units.filter(u => {
+      const matchType = unitType === 'all' || u.type === unitType;
+      return matchType;
+    });
+  }, [units, unitType]);
+
+  const filteredReports = useMemo(() => {
+    return reports.filter(r => {
+      const inDateRange = r.createdAt >= startDate && r.createdAt <= endDate;
+      return inDateRange;
+    });
+  }, [reports, startDate, endDate]);
+
+  const totalHazards = filteredHazards.length;
+  const overdueCount = filteredHazards.filter(h => h.status === '已逾期').length;
+  const rectificationRate = totalHazards > 0 ? Math.round(
+    (filteredHazards.filter(h => h.status === '已完成').length / totalHazards) * 100
+  ) : 0;
   const redCardCount = mockRedYellowCards.filter(c => c.cardType === '红牌').length;
   const yellowCardCount = mockRedYellowCards.filter(c => c.cardType === '黄牌').length;
+
+  const duplicateHazardTypes = useMemo(() => {
+    const keywords = ['消防通道', '灭火器', '电气', '应急照明', '疏散指示', '安全出口', '烟感', '喷淋', '消火栓', '燃气'];
+    const typeCount: Record<string, number> = {};
+    
+    keywords.forEach((kw) => {
+      typeCount[kw] = 0;
+    });
+    
+    filteredHazards.forEach((h) => {
+      keywords.forEach((kw) => {
+        if (h.description.includes(kw) || h.location.includes(kw)) {
+          typeCount[kw]++;
+        }
+      });
+    });
+    
+    const total = Object.values(typeCount).reduce((a, b) => a + b, 0);
+    return Object.entries(typeCount)
+      .filter(([, count]) => count > 0)
+      .map(([name, count]) => ({
+        name,
+        count,
+        percentage: total > 0 ? Math.round((count / total) * 100) : 0
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [filteredHazards]);
+
+  const overdueSupervision = useMemo(() => {
+    const unitMap = new Map(filteredUnits.map(u => [u.id, u]));
+    const areaMap = new Map<string, { count: number; level: string }>();
+    
+    filteredHazards
+      .filter(h => h.status === '已逾期' && unitMap.has(h.unitId))
+      .forEach(h => {
+        const unit = unitMap.get(h.unitId)!;
+        const areaName = unit.address.split('街道')[0] + '街道';
+        if (!areaMap.has(areaName)) {
+          areaMap.set(areaName, { count: 0, level: '一般' });
+        }
+        const area = areaMap.get(areaName)!;
+        area.count++;
+        if (h.level === '重大') {
+          area.level = '重大';
+        } else if (h.level === '较大' && area.level !== '重大') {
+          area.level = '较大';
+        }
+      });
+    
+    return Array.from(areaMap.entries())
+      .map(([name, data]) => ({ name, count: data.count, level: data.level }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  }, [filteredHazards, filteredUnits]);
+
+  const areaRankData = useMemo(() => {
+    const unitMap = new Map(filteredUnits.map(u => [u.id, u]));
+    const hazardCountByUnit = new Map<string, number>();
+    const rectifiedCountByUnit = new Map<string, number>();
+    
+    filteredHazards.forEach(h => {
+      hazardCountByUnit.set(h.unitId, (hazardCountByUnit.get(h.unitId) || 0) + 1);
+      if (h.status === '已完成') {
+        rectifiedCountByUnit.set(h.unitId, (rectifiedCountByUnit.get(h.unitId) || 0) + 1);
+      }
+    });
+
+    const areaMap = new Map<string, { unitCount: number; hazardCount: number; rectifiedCount: number }>();
+    
+    filteredUnits.forEach(u => {
+      const areaName = u.address.split('街道')[0] + '街道';
+      if (!areaMap.has(areaName)) {
+        areaMap.set(areaName, { unitCount: 0, hazardCount: 0, rectifiedCount: 0 });
+      }
+      const area = areaMap.get(areaName)!;
+      area.unitCount++;
+      area.hazardCount += hazardCountByUnit.get(u.id) || 0;
+      area.rectifiedCount += rectifiedCountByUnit.get(u.id) || 0;
+    });
+
+    return Array.from(areaMap.entries())
+      .map(([name, data], index) => ({
+        name,
+        unitCount: data.unitCount,
+        hazardCount: data.hazardCount,
+        rectificationRate: data.hazardCount > 0 ? Math.round((data.rectifiedCount / data.hazardCount) * 100) : 0,
+        inspectionRate: Math.round(70 + Math.random() * 25),
+        rank: index + 1
+      }))
+      .sort((a, b) => b.hazardCount - a.hazardCount);
+  }, [filteredHazards, filteredUnits]);
+
+  const hazardTypeDistribution = useMemo(() => {
+    const general = filteredHazards.filter(h => h.level === '一般').length;
+    const major = filteredHazards.filter(h => h.level === '较大').length;
+    const critical = filteredHazards.filter(h => h.level === '重大').length;
+    return [
+      { name: '一般隐患', value: general, color: '#10b981' },
+      { name: '较大隐患', value: major, color: '#f59e0b' },
+      { name: '重大隐患', value: critical, color: '#ef4444' }
+    ];
+  }, [filteredHazards]);
+
+  const unitTypeDistribution = useMemo(() => {
+    const typeCount: Record<string, number> = {};
+    filteredUnits.forEach(u => {
+      typeCount[u.type] = (typeCount[u.type] || 0) + 1;
+    });
+    return Object.entries(typeCount).map(([name, count]) => ({ name, count }));
+  }, [filteredUnits]);
+
+  const monthlyStats = useMemo(() => {
+    const monthMap = new Map<string, { hazards: number; rectified: number; inspections: number }>();
+    
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const months: string[] = [];
+    const current = new Date(start.getFullYear(), start.getMonth(), 1);
+    while (current <= end) {
+      const monthKey = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
+      months.push(monthKey);
+      monthMap.set(monthKey, { hazards: 0, rectified: 0, inspections: 0 });
+      current.setMonth(current.getMonth() + 1);
+    }
+
+    filteredHazards.forEach(h => {
+      const month = h.foundDate.substring(0, 7);
+      if (monthMap.has(month)) {
+        monthMap.get(month)!.hazards++;
+        if (h.status === '已完成') {
+          monthMap.get(month)!.rectified++;
+        }
+      }
+    });
+
+    inspectionPlans.forEach(p => {
+      const month = p.startDate.substring(0, 7);
+      if (monthMap.has(month)) {
+        monthMap.get(month)!.inspections++;
+      }
+    });
+
+    return months.map(month => {
+      const data = monthMap.get(month)!;
+      const [, mon] = month.split('-');
+      return {
+        month: `${parseInt(mon)}月`,
+        hazards: data.hazards || 0,
+        rectified: data.rectified || 0,
+        inspections: data.inspections || 0
+      };
+    });
+  }, [filteredHazards, inspectionPlans, startDate, endDate]);
 
   const getCurrentDateStr = () => {
     return new Date().toISOString().split('T')[0];
@@ -102,85 +254,25 @@ export default function AnalyticsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const calculateAreaStats = () => {
-    const unitMap = new Map<string, typeof units[0]>();
-    units.forEach(u => unitMap.set(u.id, u));
-
-    const hazardCountByUnit = new Map<string, number>();
-    const rectifiedCountByUnit = new Map<string, number>();
-    
-    hazards.forEach(h => {
-      hazardCountByUnit.set(h.unitId, (hazardCountByUnit.get(h.unitId) || 0) + 1);
-      if (h.status === '已完成') {
-        rectifiedCountByUnit.set(h.unitId, (rectifiedCountByUnit.get(h.unitId) || 0) + 1);
-      }
-    });
-
-    const areaMap = new Map<string, { unitCount: number; hazardCount: number; rectifiedCount: number }>();
-    
-    units.forEach(u => {
-      const areaName = u.address.split('街道')[0] + '街道';
-      if (!areaMap.has(areaName)) {
-        areaMap.set(areaName, { unitCount: 0, hazardCount: 0, rectifiedCount: 0 });
-      }
-      const area = areaMap.get(areaName)!;
-      area.unitCount++;
-      area.hazardCount += hazardCountByUnit.get(u.id) || 0;
-      area.rectifiedCount += rectifiedCountByUnit.get(u.id) || 0;
-    });
-
-    return Array.from(areaMap.entries()).map(([name, data]) => ({
-      name,
-      unitCount: data.unitCount,
-      hazardCount: data.hazardCount,
-      rectificationRate: data.hazardCount > 0 ? Math.round((data.rectifiedCount / data.hazardCount) * 100) : 0,
-      inspectionRate: Math.round(70 + Math.random() * 25)
-    }));
-  };
-
-  const calculateMonthlyStats = () => {
-    const monthMap = new Map<string, { hazards: number; rectified: number; inspections: number }>();
-    
-    const months = ['2025-01', '2025-02', '2025-03', '2025-04', '2025-05', '2025-06'];
-    months.forEach(m => monthMap.set(m, { hazards: 0, rectified: 0, inspections: 0 }));
-
-    hazards.forEach(h => {
-      const month = h.foundDate.substring(0, 7);
-      if (monthMap.has(month)) {
-        monthMap.get(month)!.hazards++;
-        if (h.status === '已完成') {
-          monthMap.get(month)!.rectified++;
-        }
-      }
-    });
-
-    inspectionPlans.forEach(p => {
-      const month = p.startDate.substring(0, 7);
-      if (monthMap.has(month)) {
-        monthMap.get(month)!.inspections++;
-      }
-    });
-
-    return months.map(month => {
-      const data = monthMap.get(month)!;
-      const [year, mon] = month.split('-');
-      return {
-        month: `${parseInt(mon)}月`,
-        hazards: data.hazards || 0,
-        rectified: data.rectified || 0,
-        inspections: data.inspections || 0
-      };
-    });
+  const getFilterDesc = () => {
+    const typeDesc = unitType === 'all' ? '全部' : unitType;
+    return `时间范围 ${startDate} 至 ${endDate}，单位类型：${typeDesc}`;
   };
 
   const handleExport = (type: string) => {
     setShowExportMenu(false);
+    const filterDesc = getFilterDesc();
     
     if (type === '隐患分析') {
       const headers = ['隐患编号', '所属单位', '隐患描述', '隐患位置', '风险等级', '状态', '发现日期', '整改期限', '责任人'];
-      const rows = hazards.map(h => {
-        const unit = units.find(u => u.id === h.unitId);
-        return [
+      const rows = [
+        [`筛选条件：${filterDesc}`],
+        [],
+        headers
+      ];
+      filteredHazards.forEach(h => {
+        const unit = filteredUnits.find(u => u.id === h.unitId);
+        rows.push([
           h.id.toUpperCase(),
           unit?.name || '未知',
           h.description,
@@ -190,61 +282,73 @@ export default function AnalyticsPage() {
           h.foundDate,
           h.deadline,
           h.responsiblePerson
-        ];
+        ]);
       });
-      generateCSV(headers, rows, '隐患分析报表');
+      generateCSV(headers, rows.slice(2), '隐患分析报表');
     } else if (type === '区域统计') {
-      const areaStats = calculateAreaStats();
       const headers = ['区域名称', '监管单位数', '隐患总数', '整改完成率', '检查覆盖率'];
-      const rows = areaStats.map(s => [
-        s.name,
-        s.unitCount.toString(),
-        s.hazardCount.toString(),
-        `${s.rectificationRate}%`,
-        `${s.inspectionRate}%`
-      ]);
-      generateCSV(headers, rows, '区域统计报表');
+      const rows = [
+        [`筛选条件：${filterDesc}`],
+        [],
+        headers
+      ];
+      areaRankData.forEach(s => {
+        rows.push([
+          s.name,
+          s.unitCount.toString(),
+          s.hazardCount.toString(),
+          `${s.rectificationRate}%`,
+          `${s.inspectionRate}%`
+        ]);
+      });
+      generateCSV(headers, rows.slice(2), '区域统计报表');
     } else if (type === '月度汇总') {
-      const monthlyStats = calculateMonthlyStats();
       const headers = ['月份', '隐患发现数', '整改完成数', '检查计划数', '整改率'];
-      const rows = monthlyStats.map(m => [
-        m.month,
-        m.hazards.toString(),
-        m.rectified.toString(),
-        m.inspections.toString(),
-        m.hazards > 0 ? `${Math.round((m.rectified / m.hazards) * 100)}%` : '0%'
-      ]);
-      generateCSV(headers, rows, '月度汇总报表');
+      const rows = [
+        [`筛选条件：${filterDesc}`],
+        [],
+        headers
+      ];
+      monthlyStats.forEach(m => {
+        rows.push([
+          m.month,
+          m.hazards.toString(),
+          m.rectified.toString(),
+          m.inspections.toString(),
+          m.hazards > 0 ? `${Math.round((m.rectified / m.hazards) * 100)}%` : '0%'
+        ]);
+      });
+      generateCSV(headers, rows.slice(2), '月度汇总报表');
     } else if (type === '全部数据') {
-      const areaStats = calculateAreaStats();
       const content = `
 ========================================
       城市消防隐患治理 - 全部数据报表
 ========================================
 生成时间: ${new Date().toLocaleString('zh-CN')}
+筛选条件: ${filterDesc}
 
 一、监管单位概况
 ----------------------------------------
-监管单位总数: ${units.length} 家
-重点单位: ${units.filter(u => u.level === '重点').length} 家
-关注单位: ${units.filter(u => u.level === '关注').length} 家
-一般单位: ${units.filter(u => u.level === '一般').length} 家
+监管单位总数: ${filteredUnits.length} 家
+重点单位: ${filteredUnits.filter(u => u.level === '重点').length} 家
+关注单位: ${filteredUnits.filter(u => u.level === '关注').length} 家
+一般单位: ${filteredUnits.filter(u => u.level === '一般').length} 家
 
 二、隐患总体情况
 ----------------------------------------
-隐患总数: ${hazards.length} 项
-待整改: ${hazards.filter(h => h.status === '待整改').length} 项
-整改中: ${hazards.filter(h => h.status === '整改中').length} 项
-待复查: ${hazards.filter(h => h.status === '待复查').length} 项
-已完成: ${hazards.filter(h => h.status === '已完成').length} 项
-已逾期: ${hazards.filter(h => h.status === '已逾期').length} 项
-整改完成率: ${hazards.length > 0 ? Math.round((hazards.filter(h => h.status === '已完成').length / hazards.length) * 100) : 0}%
+隐患总数: ${filteredHazards.length} 项
+待整改: ${filteredHazards.filter(h => h.status === '待整改').length} 项
+整改中: ${filteredHazards.filter(h => h.status === '整改中').length} 项
+待复查: ${filteredHazards.filter(h => h.status === '待复查').length} 项
+已完成: ${filteredHazards.filter(h => h.status === '已完成').length} 项
+已逾期: ${filteredHazards.filter(h => h.status === '已逾期').length} 项
+整改完成率: ${filteredHazards.length > 0 ? Math.round((filteredHazards.filter(h => h.status === '已完成').length / filteredHazards.length) * 100) : 0}%
 
 三、风险等级分布
 ----------------------------------------
-一般隐患: ${hazards.filter(h => h.level === '一般').length} 项
-较大隐患: ${hazards.filter(h => h.level === '较大').length} 项
-重大隐患: ${hazards.filter(h => h.level === '重大').length} 项
+一般隐患: ${filteredHazards.filter(h => h.level === '一般').length} 项
+较大隐患: ${filteredHazards.filter(h => h.level === '较大').length} 项
+重大隐患: ${filteredHazards.filter(h => h.level === '重大').length} 项
 
 四、检查计划情况
 ----------------------------------------
@@ -261,9 +365,17 @@ export default function AnalyticsPage() {
 已通过: ${selfCheckRecords.filter(r => r.status === '已通过').length} 条
 已驳回: ${selfCheckRecords.filter(r => r.status === '已驳回').length} 条
 
-六、区域排行（按隐患数量）
+六、举报情况
 ----------------------------------------
-${areaStats.sort((a, b) => b.hazardCount - a.hazardCount).map((s, i) => 
+举报总数: ${filteredReports.length} 条
+待受理: ${filteredReports.filter(r => r.status === '待受理').length} 条
+处理中: ${filteredReports.filter(r => r.status === '处理中').length} 条
+已处理: ${filteredReports.filter(r => r.status === '已处理').length} 条
+已结案: ${filteredReports.filter(r => r.status === '已结案').length} 条
+
+七、区域排行（按隐患数量）
+----------------------------------------
+${areaRankData.sort((a, b) => b.hazardCount - a.hazardCount).map((s, i) => 
   `${i + 1}. ${s.name} - ${s.hazardCount}项隐患, 整改率${s.rectificationRate}%`
 ).join('\n')}
 
@@ -298,20 +410,6 @@ ${areaStats.sort((a, b) => b.hazardCount - a.hazardCount).map((s, i) =>
           <p className="text-slate-500 mt-1">消防安全隐患多维分析与监管报表</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-white rounded-lg border border-slate-200 px-3 py-2">
-            <Calendar className="w-4 h-4 text-slate-400" />
-            <select
-              value={selectedPeriod}
-              onChange={(e) => setSelectedPeriod(e.target.value)}
-              className="bg-transparent text-sm text-slate-600 focus:outline-none cursor-pointer"
-            >
-              <option value="今日">今日</option>
-              <option value="本周">本周</option>
-              <option value="本月">本月</option>
-              <option value="本季度">本季度</option>
-              <option value="本年">本年</option>
-            </select>
-          </div>
           <button className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
             <RefreshCw className="w-4 h-4" />
             <span className="text-sm">刷新数据</span>
@@ -361,10 +459,51 @@ ${areaStats.sort((a, b) => b.hazardCount - a.hazardCount).map((s, i) =>
         </div>
       </div>
 
+      <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex items-center gap-2">
+            <Filter className="w-5 h-5 text-slate-400" />
+            <span className="text-sm font-medium text-slate-700">筛选条件</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-slate-600">开始日期</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-slate-600">结束日期</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-slate-600">单位类型</label>
+            <select
+              value={unitType}
+              onChange={(e) => setUnitType(e.target.value as UnitType | 'all')}
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white"
+            >
+              {unitTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type === 'all' ? '全部' : type}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard
           title="隐患总数"
-          value={totalHazards + 268}
+          value={totalHazards}
           icon={AlertTriangle}
           trend="12.5%"
           trendUp={false}
@@ -372,7 +511,7 @@ ${areaStats.sort((a, b) => b.hazardCount - a.hazardCount).map((s, i) =>
         />
         <StatsCard
           title="逾期未整改"
-          value={overdueCount + 32}
+          value={overdueCount}
           icon={Clock}
           trend="8.3%"
           trendUp={false}
@@ -380,16 +519,16 @@ ${areaStats.sort((a, b) => b.hazardCount - a.hazardCount).map((s, i) =>
         />
         <StatsCard
           title="整改完成率"
-          value={`${rectificationRate + 12}%`}
+          value={`${rectificationRate}%`}
           icon={CheckCircle2}
           trend="5.2%"
           trendUp={true}
           color="green"
         />
         <StatsCard
-          title="红黄牌单位"
-          value={redCardCount + yellowCardCount + 15}
-          icon={Award}
+          title="举报数量"
+          value={filteredReports.length}
+          icon={AlertCircle}
           trend="3.1%"
           trendUp={false}
           color="blue"
@@ -427,7 +566,7 @@ ${areaStats.sort((a, b) => b.hazardCount - a.hazardCount).map((s, i) =>
               </ResponsiveContainer>
             </div>
             <div className="space-y-2">
-              {duplicateHazardTypes.map((item, index) => (
+              {duplicateHazardTypes.slice(0, 6).map((item, index) => (
                 <div key={item.name} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
                   <div className="flex items-center gap-2">
                     <div
@@ -510,7 +649,7 @@ ${areaStats.sort((a, b) => b.hazardCount - a.hazardCount).map((s, i) =>
           </div>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={mockMonthlyStats}>
+              <AreaChart data={monthlyStats}>
                 <defs>
                   <linearGradient id="colorHazards" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />

@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { StatusTag } from '@/components/common/StatusTag';
 import { StatsCard } from '@/components/common/StatsCard';
-import { mockReports } from '@/utils/mock';
+import { useAppStore } from '@/store';
 import type { Report, ReportStatus } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -47,7 +47,7 @@ const mockHandlers = ['王专干', '李消防', '赵监督员', '张科员'];
 
 export default function ReportsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [reports, setReports] = useState<Report[]>(mockReports);
+  const { reports, addReport, updateReport } = useAppStore();
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -119,7 +119,7 @@ export default function ReportsPage() {
       updatedAt: new Date().toISOString().split('T')[0]
     };
     
-    setReports([newReport, ...reports]);
+    addReport(newReport);
     setShowRegisterModal(false);
     setRegisterForm({ title: '', reporterName: '', reporterPhone: '', location: '', description: '' });
   };
@@ -127,15 +127,14 @@ export default function ReportsPage() {
   const handleAssign = () => {
     if (!selectedReport || !assignForm.handler) return;
     
-    const updatedReport: Report = {
-      ...selectedReport,
-      status: '处理中',
+    const updatedData = {
+      status: '处理中' as ReportStatus,
       handler: assignForm.handler,
       updatedAt: new Date().toISOString().split('T')[0]
     };
     
-    setReports(reports.map((r) => r.id === selectedReport.id ? updatedReport : r));
-    setSelectedReport(updatedReport);
+    updateReport(selectedReport.id, updatedData);
+    setSelectedReport({ ...selectedReport, ...updatedData });
     setShowAssignModal(false);
     setAssignForm({ handler: '' });
   };
@@ -143,15 +142,14 @@ export default function ReportsPage() {
   const handleFeedback = () => {
     if (!selectedReport || !feedbackForm.handleResult) return;
     
-    const updatedReport: Report = {
-      ...selectedReport,
-      status: '已处理',
+    const updatedData = {
+      status: '已处理' as ReportStatus,
       handleResult: feedbackForm.handleResult,
       updatedAt: new Date().toISOString().split('T')[0]
     };
     
-    setReports(reports.map((r) => r.id === selectedReport.id ? updatedReport : r));
-    setSelectedReport(updatedReport);
+    updateReport(selectedReport.id, updatedData);
+    setSelectedReport({ ...selectedReport, ...updatedData });
     setShowFeedbackModal(false);
     setFeedbackForm({ handleResult: '' });
   };
@@ -159,14 +157,13 @@ export default function ReportsPage() {
   const handleCloseCase = () => {
     if (!selectedReport) return;
     
-    const updatedReport: Report = {
-      ...selectedReport,
-      status: '已结案',
+    const updatedData = {
+      status: '已结案' as ReportStatus,
       updatedAt: new Date().toISOString().split('T')[0]
     };
     
-    setReports(reports.map((r) => r.id === selectedReport.id ? updatedReport : r));
-    setSelectedReport(updatedReport);
+    updateReport(selectedReport.id, updatedData);
+    setSelectedReport({ ...selectedReport, ...updatedData });
   };
 
   const getCurrentStepIndex = (status: ReportStatus) => {

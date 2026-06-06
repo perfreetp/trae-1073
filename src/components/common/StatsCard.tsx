@@ -7,14 +7,15 @@ interface StatsCardProps {
   icon: LucideIcon;
   trend?: string;
   trendUp?: boolean;
-  color?: 'red' | 'blue' | 'green' | 'amber';
+  color?: 'red' | 'blue' | 'green' | 'amber' | 'purple';
 }
 
 const colorClasses = {
   red: 'from-red-500 to-red-600',
   blue: 'from-blue-500 to-blue-600',
   green: 'from-green-500 to-green-600',
-  amber: 'from-amber-500 to-amber-600'
+  amber: 'from-amber-500 to-amber-600',
+  purple: 'from-purple-500 to-purple-600'
 };
 
 export function StatsCard({ title, value, icon: Icon, trend, trendUp, color = 'red' }: StatsCardProps) {

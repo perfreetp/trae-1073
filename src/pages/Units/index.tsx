@@ -14,10 +14,15 @@ import {
   FireExtinguisher,
   Clock,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  BarChart3,
+  FileText,
+  AlertTriangle,
+  ClipboardList
 } from 'lucide-react';
 import { StatusTag } from '@/components/common/StatusTag';
-import { mockUnits, mockFacilities } from '@/utils/mock';
+import { useAppStore } from '@/store';
+import { mockFacilities } from '@/utils/mock';
 import type { Unit, Facility, UnitType, UnitLevel } from '@/types';
 
 const unitTypes: UnitType[] = ['商场', '酒店', '工厂', '学校', '医院', '住宅小区', '其他'];
@@ -29,9 +34,12 @@ export default function Units() {
   const [filterLevel, setFilterLevel] = useState<UnitLevel | 'all'>('all');
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [activeTab, setActiveTab] = useState<'basic' | 'facilities' | 'hazards'>('basic');
+
+  const { units, hazards, inspectionPlans, selfCheckRecords, reports } = useAppStore();
 
   const filteredUnits = useMemo(() => {
-    return mockUnits.filter((unit) => {
+    return units.filter((unit) => {
       const matchKeyword =
         unit.name.toLowerCase().includes(searchKeyword.toLowerCase()) ||
         unit.address.toLowerCase().includes(searchKeyword.toLowerCase());
@@ -39,7 +47,7 @@ export default function Units() {
       const matchLevel = filterLevel === 'all' || unit.level === filterLevel;
       return matchKeyword && matchType && matchLevel;
     });
-  }, [searchKeyword, filterType, filterLevel]);
+  }, [units, searchKeyword, filterType, filterLevel]);
 
   const unitFacilities = useMemo(() => {
     if (!selectedUnit) return [];
@@ -47,12 +55,75 @@ export default function Units() {
   }, [selectedUnit]);
 
   const stats = useMemo(() => {
-    const total = mockUnits.length;
-    const keyPoint = mockUnits.filter((u) => u.level === '重点').length;
-    const normal = mockUnits.filter((u) => u.level === '一般').length;
-    const attention = mockUnits.filter((u) => u.level === '关注').length;
+    const total = units.length;
+    const keyPoint = units.filter((u) => u.level === '重点').length;
+    const normal = units.filter((u) => u.level === '一般').length;
+    const attention = units.filter((u) => u.level === '关注').length;
     return { total, keyPoint, normal, attention };
-  }, []);
+  }, [units]);
+
+  const unitHazardStats = useMemo(() => {
+    if (!selectedUnit) return { total: 0, pending: 0, completed: 0, rate: 0 };
+    const unitHazards = hazards.filter((h) => h.unitId === selectedUnit.id);
+    const total = unitHazards.length;
+    const completed = unitHazards.filter((h) => h.status === '已完成').length;
+    const pending = total - completed;
+    const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+    return { total, pending, completed, rate };
+  }, [selectedUnit, hazards]);
+
+  const duplicateHazardTypes = useMemo(() => {
+    if (!selectedUnit) return [];
+    const unitHazards = hazards.filter((h) => h.unitId === selectedUnit.id);
+    const keywords = ['消防通道', '灭火器', '电气', '应急照明', '疏散指示', '安全出口', '烟感', '喷淋', '消火栓', '燃气'];
+    const typeCount: Record<string, number> = {};
+    
+    keywords.forEach((kw) => {
+      typeCount[kw] = 0;
+    });
+    
+    unitHazards.forEach((h) => {
+      keywords.forEach((kw) => {
+        if (h.description.includes(kw) || h.location.includes(kw)) {
+          typeCount[kw]++;
+        }
+      });
+    });
+    
+    const total = Object.values(typeCount).reduce((a, b) => a + b, 0);
+    return Object.entries(typeCount)
+      .filter(([, count]) => count > 0)
+      .map(([name, count]) => ({
+        name,
+        count,
+        percentage: total > 0 ? Math.round((count / total) * 100) : 0
+      }))
+      .sort((a, b) => b.count - a.count);
+  }, [selectedUnit, hazards]);
+
+  const recentInspectionPlans = useMemo(() => {
+    if (!selectedUnit) return [];
+    return inspectionPlans
+      .filter((p) => p.unitIds.includes(selectedUnit.id))
+      .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
+      .slice(0, 2);
+  }, [selectedUnit, inspectionPlans]);
+
+  const recentSelfCheckRecords = useMemo(() => {
+    if (!selectedUnit) return [];
+    return selfCheckRecords
+      .filter((r) => r.unitId === selectedUnit.id)
+      .sort((a, b) => new Date(b.checkDate).getTime() - new Date(a.checkDate).getTime())
+      .slice(0, 2);
+  }, [selectedUnit, selfCheckRecords]);
+
+  const recentReports = useMemo(() => {
+    if (!selectedUnit) return [];
+    return reports
+      .filter((r) => r.location.includes(selectedUnit.name) || r.description.includes(selectedUnit.name))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 2);
+  }, [selectedUnit, reports]);
 
   const handleUnitClick = (unit: Unit) => {
     setSelectedUnit(unit);
@@ -61,7 +132,14 @@ export default function Units() {
 
   const closeSidebar = () => {
     setShowSidebar(false);
-    setTimeout(() => setSelectedUnit(null), 300);
+    setTimeout(() => {
+      setSelectedUnit(null);
+      setActiveTab('basic');
+    }, 300);
+  };
+
+  const navigateTo = (path: string) => {
+    window.location.href = path;
   };
 
   return (
@@ -310,79 +388,273 @@ export default function Units() {
                       </span>
                     )}
                   </div>
+                </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex items-start gap-3">
-                      <MapPin className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-slate-400 mb-0.5">单位地址</p>
-                        <p className="text-sm text-slate-700">{selectedUnit.address}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <User className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-slate-400 mb-0.5">联系人</p>
-                        <p className="text-sm text-slate-700">{selectedUnit.contact}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <Phone className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-slate-400 mb-0.5">联系电话</p>
-                        <p className="text-sm text-slate-700">{selectedUnit.phone}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <Calendar className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-slate-400 mb-0.5">成立日期</p>
-                        <p className="text-sm text-slate-700">{selectedUnit.establishDate}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <Square className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-slate-400 mb-0.5">建筑面积</p>
-                        <p className="text-sm text-slate-700">{selectedUnit.area.toLocaleString()} ㎡</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <Layers className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-slate-400 mb-0.5">楼层数</p>
-                        <p className="text-sm text-slate-700">{selectedUnit.floorCount} 层</p>
-                      </div>
-                    </div>
+                <div className="border-b border-slate-200 px-6">
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setActiveTab('basic')}
+                      className={`px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                        activeTab === 'basic'
+                          ? 'text-red-600 border-red-600'
+                          : 'text-slate-500 border-transparent hover:text-slate-700'
+                      }`}
+                    >
+                      基本信息
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('facilities')}
+                      className={`px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                        activeTab === 'facilities'
+                          ? 'text-red-600 border-red-600'
+                          : 'text-slate-500 border-transparent hover:text-slate-700'
+                      }`}
+                    >
+                      消防设施
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('hazards')}
+                      className={`px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                        activeTab === 'hazards'
+                          ? 'text-red-600 border-red-600'
+                          : 'text-slate-500 border-transparent hover:text-slate-700'
+                      }`}
+                    >
+                      隐患画像
+                    </button>
                   </div>
                 </div>
 
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-                      <FireExtinguisher className="w-5 h-5 text-red-600" />
-                      消防设施列表
-                    </h3>
-                    <span className="text-sm text-slate-500">
-                      共 {unitFacilities.length} 项设施
-                    </span>
-                  </div>
-
-                  <div className="space-y-3">
-                    {unitFacilities.length > 0 ? (
-                      unitFacilities.map((facility) => (
-                        <FacilityCard key={facility.id} facility={facility} />
-                      ))
-                    ) : (
-                      <div className="py-8 text-center border border-dashed border-slate-300 rounded-xl">
-                        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-                          <FireExtinguisher className="w-6 h-6 text-slate-400" />
+                {activeTab === 'basic' && (
+                  <div className="p-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex items-start gap-3">
+                        <MapPin className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-xs text-slate-400 mb-0.5">单位地址</p>
+                          <p className="text-sm text-slate-700">{selectedUnit.address}</p>
                         </div>
-                        <p className="text-slate-500 text-sm">暂无消防设施记录</p>
                       </div>
-                    )}
+                      <div className="flex items-start gap-3">
+                        <User className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-xs text-slate-400 mb-0.5">联系人</p>
+                          <p className="text-sm text-slate-700">{selectedUnit.contact}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <Phone className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-xs text-slate-400 mb-0.5">联系电话</p>
+                          <p className="text-sm text-slate-700">{selectedUnit.phone}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <Calendar className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-xs text-slate-400 mb-0.5">成立日期</p>
+                          <p className="text-sm text-slate-700">{selectedUnit.establishDate}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <Square className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-xs text-slate-400 mb-0.5">建筑面积</p>
+                          <p className="text-sm text-slate-700">{selectedUnit.area.toLocaleString()} ㎡</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <Layers className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-xs text-slate-400 mb-0.5">楼层数</p>
+                          <p className="text-sm text-slate-700">{selectedUnit.floorCount} 层</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {activeTab === 'facilities' && (
+                  <div className="p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                        <FireExtinguisher className="w-5 h-5 text-red-600" />
+                        消防设施列表
+                      </h3>
+                      <span className="text-sm text-slate-500">
+                        共 {unitFacilities.length} 项设施
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {unitFacilities.length > 0 ? (
+                        unitFacilities.map((facility) => (
+                          <FacilityCard key={facility.id} facility={facility} />
+                        ))
+                      ) : (
+                        <div className="py-8 text-center border border-dashed border-slate-300 rounded-xl">
+                          <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                            <FireExtinguisher className="w-6 h-6 text-slate-400" />
+                          </div>
+                          <p className="text-slate-500 text-sm">暂无消防设施记录</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'hazards' && (
+                  <div className="p-6 space-y-6">
+                    <div>
+                      <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4">
+                        <BarChart3 className="w-5 h-5 text-red-600" />
+                        隐患统计
+                      </h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                          <p className="text-xs text-slate-500 mb-1">历史隐患总数</p>
+                          <p className="text-2xl font-bold text-slate-800">{unitHazardStats.total}</p>
+                        </div>
+                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                          <p className="text-xs text-slate-500 mb-1">未完成隐患</p>
+                          <p className="text-2xl font-bold text-amber-600">{unitHazardStats.pending}</p>
+                        </div>
+                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                          <p className="text-xs text-slate-500 mb-1">已完成隐患</p>
+                          <p className="text-2xl font-bold text-green-600">{unitHazardStats.completed}</p>
+                        </div>
+                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                          <p className="text-xs text-slate-500 mb-1">整改完成率</p>
+                          <p className="text-2xl font-bold text-blue-600">{unitHazardStats.rate}%</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4">
+                        <AlertTriangle className="w-5 h-5 text-amber-500" />
+                        重复问题类型
+                      </h3>
+                      {duplicateHazardTypes.length > 0 ? (
+                        <div className="space-y-2">
+                          {duplicateHazardTypes.slice(0, 5).map((item, index) => (
+                            <div key={item.name} className="flex items-center gap-3">
+                              <span className="text-xs text-slate-400 w-5">{index + 1}</span>
+                              <span className="text-sm text-slate-700 flex-1">{item.name}</span>
+                              <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-amber-500 rounded-full"
+                                  style={{ width: `${item.percentage}%` }}
+                                />
+                              </div>
+                              <span className="text-sm font-medium text-slate-800 w-10 text-right">{item.count}次</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="py-6 text-center border border-dashed border-slate-300 rounded-xl">
+                          <p className="text-slate-500 text-sm">暂无隐患类型统计</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4">
+                        <ClipboardList className="w-5 h-5 text-blue-500" />
+                        最近检查计划
+                      </h3>
+                      {recentInspectionPlans.length > 0 ? (
+                        <div className="space-y-3">
+                          {recentInspectionPlans.map((plan) => (
+                            <div
+                              key={plan.id}
+                              onClick={() => navigateTo(`/inspections?highlightId=${plan.id}`)}
+                              className="bg-slate-50 rounded-xl p-4 border border-slate-200 hover:border-blue-300 hover:bg-blue-50 cursor-pointer transition-all"
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <h4 className="font-medium text-slate-800 text-sm">{plan.name}</h4>
+                                  <p className="text-xs text-slate-500 mt-1">
+                                    {plan.startDate} 至 {plan.endDate}
+                                  </p>
+                                </div>
+                                <StatusTag status={plan.status} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="py-6 text-center border border-dashed border-slate-300 rounded-xl">
+                          <p className="text-slate-500 text-sm">暂无检查计划</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4">
+                        <FileText className="w-5 h-5 text-green-500" />
+                        最近自查记录
+                      </h3>
+                      {recentSelfCheckRecords.length > 0 ? (
+                        <div className="space-y-3">
+                          {recentSelfCheckRecords.map((record) => (
+                            <div
+                              key={record.id}
+                              onClick={() => navigateTo(`/self-check?highlightId=${record.id}`)}
+                              className="bg-slate-50 rounded-xl p-4 border border-slate-200 hover:border-green-300 hover:bg-green-50 cursor-pointer transition-all"
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <h4 className="font-medium text-slate-800 text-sm">{record.checkDate} 自查</h4>
+                                  <p className="text-xs text-slate-500 mt-1">
+                                    检查人：{record.checker}
+                                  </p>
+                                </div>
+                                <StatusTag status={record.status} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="py-6 text-center border border-dashed border-slate-300 rounded-xl">
+                          <p className="text-slate-500 text-sm">暂无自查记录</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4">
+                        <AlertCircle className="w-5 h-5 text-red-500" />
+                        最近举报记录
+                      </h3>
+                      {recentReports.length > 0 ? (
+                        <div className="space-y-3">
+                          {recentReports.map((report) => (
+                            <div
+                              key={report.id}
+                              onClick={() => navigateTo(`/reports?highlightId=${report.id}`)}
+                              className="bg-slate-50 rounded-xl p-4 border border-slate-200 hover:border-red-300 hover:bg-red-50 cursor-pointer transition-all"
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <h4 className="font-medium text-slate-800 text-sm">{report.title}</h4>
+                                  <p className="text-xs text-slate-500 mt-1">
+                                    {report.createdAt}
+                                  </p>
+                                </div>
+                                <StatusTag status={report.status} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="py-6 text-center border border-dashed border-slate-300 rounded-xl">
+                          <p className="text-slate-500 text-sm">暂无举报记录</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

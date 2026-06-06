@@ -74,6 +74,21 @@ export interface RecheckRecord {
   comment?: string;
 }
 
+export interface SupervisionRecord {
+  id: string;
+  hazardId: string;
+  type: '电话督办' | '现场督办' | '书面督办' | '会议督办';
+  content: string;
+  deadline: string;
+  receiver: string;
+  receiverPhone?: string;
+  operator: string;
+  createdAt: string;
+  status: '待处理' | '已处理';
+  handleResult?: string;
+  handledAt?: string;
+}
+
 export interface Hazard {
   id: string;
   unitId: string;
@@ -94,6 +109,7 @@ export interface Hazard {
   rechecker?: string;
   recheckComment?: string;
   recheckRecords?: RecheckRecord[];
+  supervisionRecords?: SupervisionRecord[];
 }
 
 export interface Report {

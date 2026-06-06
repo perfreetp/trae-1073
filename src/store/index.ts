@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Unit, Facility, InspectionPlan, Hazard, Report, Training, AttendeeRecord, ExamScore, DrillRecord, SelfCheckRecord } from '@/types';
+import type { Unit, Facility, InspectionPlan, Hazard, Report, Training, AttendeeRecord, ExamScore, DrillRecord, SelfCheckRecord, SupervisionRecord } from '@/types';
 import {
   mockUnits,
   mockFacilities,
@@ -24,6 +24,7 @@ interface AppState {
   examScores: ExamScore[];
   drillRecords: DrillRecord[];
   selfCheckRecords: SelfCheckRecord[];
+  supervisionRecords: SupervisionRecord[];
   currentUser: {
     id: string;
     name: string;
@@ -54,6 +55,9 @@ interface AppState {
   addSelfCheckRecord: (record: Omit<SelfCheckRecord, 'id' | 'createdAt' | 'status'>) => void;
   updateSelfCheckRecord: (id: string, data: Partial<SelfCheckRecord>) => void;
   deleteSelfCheckRecord: (id: string) => void;
+  addSupervisionRecord: (record: SupervisionRecord) => void;
+  updateSupervisionRecord: (id: string, updates: Partial<SupervisionRecord>) => void;
+  addHazardSupervision: (hazardId: string, record: SupervisionRecord) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -67,6 +71,7 @@ export const useAppStore = create<AppState>((set) => ({
   examScores: mockExamScores,
   drillRecords: mockDrillRecords,
   selfCheckRecords: mockSelfCheckRecords,
+  supervisionRecords: [],
   currentUser: {
     id: 'user1',
     name: '李消防',
@@ -211,5 +216,24 @@ export const useAppStore = create<AppState>((set) => ({
   deleteSelfCheckRecord: (id) =>
     set((state) => ({
       selfCheckRecords: state.selfCheckRecords.filter((r) => r.id !== id)
+    })),
+  addSupervisionRecord: (record) =>
+    set((state) => ({
+      supervisionRecords: [...state.supervisionRecords, record]
+    })),
+  updateSupervisionRecord: (id, updates) =>
+    set((state) => ({
+      supervisionRecords: state.supervisionRecords.map((r) =>
+        r.id === id ? { ...r, ...updates } : r
+      )
+    })),
+  addHazardSupervision: (hazardId, record) =>
+    set((state) => ({
+      supervisionRecords: [...state.supervisionRecords, record],
+      hazards: state.hazards.map((h) =>
+        h.id === hazardId
+          ? { ...h, supervisionRecords: [...(h.supervisionRecords || []), record] }
+          : h
+      )
     }))
 }));

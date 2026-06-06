@@ -18,15 +18,16 @@ import {
   MapPin,
   ChevronRight,
   FileText,
-  Download
+  Download,
+  Users
 } from 'lucide-react';
 import { StatsCard } from '@/components/common/StatsCard';
 import { StatusTag } from '@/components/common/StatusTag';
 import { useAppStore } from '@/store';
-import type { Hazard, RecheckRecord } from '@/types';
+import type { Hazard, RecheckRecord, SupervisionRecord } from '@/types';
 
 export default function HazardsPage() {
-  const { hazards, units, inspectionPlans, updateHazard, addHazard } = useAppStore();
+  const { hazards, units, inspectionPlans, updateHazard, addHazard, addHazardSupervision } = useAppStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -36,6 +37,14 @@ export default function HazardsPage() {
   const [showRectifyModal, setShowRectifyModal] = useState(false);
   const [showRecheckModal, setShowRecheckModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showSupervisionModal, setShowSupervisionModal] = useState(false);
+  const [supervisionForm, setSupervisionForm] = useState({
+    type: '电话督办' as SupervisionRecord['type'],
+    content: '',
+    deadline: '',
+    receiver: '',
+    receiverPhone: ''
+  });
   const [rectifyDesc, setRectifyDesc] = useState('');
   const [recheckResult, setRecheckResult] = useState<'通过' | '不通过'>('通过');
   const [recheckComment, setRecheckComment] = useState('');
@@ -166,6 +175,33 @@ export default function HazardsPage() {
 
   const addPhotoPlaceholder = () => {
     setNewHazardPhotos([...newHazardPhotos, `/photo_${Date.now()}.jpg`]);
+  };
+
+  const handleSupervisionSubmit = () => {
+    if (selectedHazard && supervisionForm.content && supervisionForm.deadline && supervisionForm.receiver) {
+      const record: SupervisionRecord = {
+        id: `sv${Date.now()}`,
+        hazardId: selectedHazard.id,
+        type: supervisionForm.type,
+        content: supervisionForm.content,
+        deadline: supervisionForm.deadline,
+        receiver: supervisionForm.receiver,
+        receiverPhone: supervisionForm.receiverPhone || undefined,
+        operator: '李消防',
+        createdAt: new Date().toISOString().split('T')[0],
+        status: '待处理'
+      };
+      addHazardSupervision(selectedHazard.id, record);
+      setShowSupervisionModal(false);
+      setSupervisionForm({
+        type: '电话督办',
+        content: '',
+        deadline: '',
+        receiver: '',
+        receiverPhone: ''
+      });
+      setSelectedHazard(hazards.find((h) => h.id === selectedHazard.id) || null);
+    }
   };
 
   const openDetail = (hazard: Hazard) => {
@@ -720,6 +756,94 @@ export default function HazardsPage() {
                 </div>
               </div>
 
+              {(selectedHazard.supervisionRecords && selectedHazard.supervisionRecords.length > 0) && (
+                <div className="mt-8">
+                  <h4 className="text-sm font-semibold text-slate-700 mb-4">督办记录</h4>
+                  <div className="relative">
+                    {selectedHazard.supervisionRecords.map((record, idx) => {
+                      const isLast = idx === selectedHazard.supervisionRecords!.length - 1;
+                      const getSupervisionColor = () => {
+                        switch (record.type) {
+                          case '电话督办':
+                            return 'bg-blue-500';
+                          case '现场督办':
+                            return 'bg-amber-500';
+                          case '书面督办':
+                            return 'bg-purple-500';
+                          case '会议督办':
+                            return 'bg-teal-500';
+                          default:
+                            return 'bg-slate-500';
+                        }
+                      };
+                      const getSupervisionIcon = () => {
+                        switch (record.type) {
+                          case '电话督办':
+                            return Phone;
+                          case '现场督办':
+                            return MapPin;
+                          case '书面督办':
+                            return FileText;
+                          case '会议督办':
+                            return Users;
+                          default:
+                            return FileText;
+                        }
+                      };
+                      const SupervisionIcon = getSupervisionIcon();
+                      return (
+                        <div key={record.id} className="flex items-start gap-4 pb-6 last:pb-0">
+                          <div className="relative flex flex-col items-center">
+                            <div
+                              className={`w-10 h-10 rounded-full flex items-center justify-center z-10 text-white ${getSupervisionColor()}`}
+                            >
+                              <SupervisionIcon className="w-5 h-5" />
+                            </div>
+                            {!isLast && (
+                              <div className="absolute top-10 w-0.5 h-full bg-slate-200"></div>
+                            )}
+                          </div>
+                          <div className="pt-2 flex-1">
+                            <div className="flex items-center justify-between">
+                              <p className="text-sm font-medium text-slate-800">{record.type}</p>
+                              <p className="text-xs text-slate-500">{record.createdAt}</p>
+                            </div>
+                            <p className="text-sm text-slate-600 mt-1">{record.content}</p>
+                            <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                要求完成：{record.deadline}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <User className="w-3 h-3" />
+                                接收人：{record.receiver}
+                                {record.receiverPhone && ` (${record.receiverPhone})`}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <User className="w-3 h-3" />
+                                操作人：{record.operator}
+                              </span>
+                            </div>
+                            <div className="mt-2">
+                              <StatusTag status={record.status} variant={record.status === '待处理' ? 'plan' : 'hazard'} />
+                            </div>
+                            {record.handleResult && (
+                              <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                <p className="text-xs font-medium text-green-700 mb-1">处理结果：</p>
+                                <p className="text-sm text-green-600">{record.handleResult}</p>
+                                {record.handledAt && (
+                                  <p className="text-xs text-green-500 mt-1">处理时间：{record.handledAt}</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="mt-6 pt-6 border-t border-slate-200 flex justify-end gap-3">
                 <button
                   onClick={() => {
@@ -750,6 +874,17 @@ export default function HazardsPage() {
                     className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg text-sm hover:from-green-600 hover:to-green-700 transition-all"
                   >
                     复查验证
+                  </button>
+                )}
+                {(selectedHazard.status === '已逾期' || selectedHazard.recheckResult === '不通过') && (
+                  <button
+                    onClick={() => {
+                      setShowDetailModal(false);
+                      setShowSupervisionModal(true);
+                    }}
+                    className="px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg text-sm hover:from-purple-600 hover:to-purple-700 transition-all"
+                  >
+                    发起督办
                   </button>
                 )}
               </div>
@@ -871,6 +1006,108 @@ export default function HazardsPage() {
                 className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg text-sm hover:from-blue-600 hover:to-blue-700 transition-all"
               >
                 确认复查
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSupervisionModal && selectedHazard && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl">
+            <div className="px-6 py-4 border-b border-slate-200">
+              <h3 className="text-lg font-semibold text-slate-800">发起督办</h3>
+              <p className="text-sm text-slate-500 mt-0.5">{selectedHazard.description}</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  督办方式 <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={supervisionForm.type}
+                  onChange={(e) => setSupervisionForm({ ...supervisionForm, type: e.target.value as SupervisionRecord['type'] })}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                >
+                  <option value="电话督办">电话督办</option>
+                  <option value="现场督办">现场督办</option>
+                  <option value="书面督办">书面督办</option>
+                  <option value="会议督办">会议督办</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  督办内容 <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={supervisionForm.content}
+                  onChange={(e) => setSupervisionForm({ ...supervisionForm, content: e.target.value })}
+                  rows={3}
+                  placeholder="请填写督办内容..."
+                  className="w-full px-4 py-3 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  要求完成时间 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={supervisionForm.deadline}
+                  onChange={(e) => setSupervisionForm({ ...supervisionForm, deadline: e.target.value })}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    接收人 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={supervisionForm.receiver}
+                    onChange={(e) => setSupervisionForm({ ...supervisionForm, receiver: e.target.value })}
+                    placeholder="请输入接收人姓名"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    接收人电话
+                  </label>
+                  <input
+                    type="tel"
+                    value={supervisionForm.receiverPhone}
+                    onChange={(e) => setSupervisionForm({ ...supervisionForm, receiverPhone: e.target.value })}
+                    placeholder="请输入联系电话"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 rounded-b-2xl flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowSupervisionModal(false);
+                  setShowDetailModal(true);
+                  setSupervisionForm({
+                    type: '电话督办',
+                    content: '',
+                    deadline: '',
+                    receiver: '',
+                    receiverPhone: ''
+                  });
+                }}
+                className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-100 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSupervisionSubmit}
+                disabled={!supervisionForm.content || !supervisionForm.deadline || !supervisionForm.receiver}
+                className="px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg text-sm hover:from-purple-600 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                提交督办
               </button>
             </div>
           </div>

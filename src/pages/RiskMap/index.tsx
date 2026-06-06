@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Building2,
   AlertTriangle,
@@ -8,18 +9,26 @@ import {
   Layers,
   ZoomIn,
   ZoomOut,
-  RefreshCw
+  RefreshCw,
+  ChevronRight,
+  Calendar,
+  User,
+  ClipboardList,
+  FileCheck,
+  X
 } from 'lucide-react';
 import { StatsCard } from '@/components/common/StatsCard';
 import { StatusTag } from '@/components/common/StatusTag';
 import { useAppStore } from '@/store';
 import { mockHazardStats, mockMonthlyStats } from '@/utils/mock';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
+import type { Hazard, InspectionPlan, SelfCheckRecord } from '@/types';
 
 const COLORS = ['#22c55e', '#f59e0b', '#ef4444'];
 
 export default function RiskMapPage() {
-  const { units, hazards } = useAppStore();
+  const navigate = useNavigate();
+  const { units, hazards, inspectionPlans, selfCheckRecords } = useAppStore();
   const [selectedLayer, setSelectedLayer] = useState<'heatmap' | 'units' | 'hazards'>('heatmap');
   const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
 
@@ -31,6 +40,32 @@ export default function RiskMapPage() {
   );
 
   const unitHazards = (unitId: string) => hazards.filter((h) => h.unitId === unitId);
+
+  const currentUnit = selectedUnit ? units.find((u) => u.id === selectedUnit) : null;
+
+  const unitPendingHazards = selectedUnit
+    ? hazards.filter((h) => h.unitId === selectedUnit && h.status !== '已完成').slice(0, 3)
+    : [];
+
+  const unitPendingPlans = selectedUnit
+    ? inspectionPlans.filter((p) => p.unitIds.includes(selectedUnit) && p.status === '未开始').slice(0, 2)
+    : [];
+
+  const unitPendingSelfChecks = selectedUnit
+    ? selfCheckRecords.filter((r) => r.unitId === selectedUnit && r.status === '待审核').slice(0, 2)
+    : [];
+
+  const handleHazardClick = (hazardId: string) => {
+    navigate(`/hazards?highlightId=${hazardId}`);
+  };
+
+  const handlePlanClick = (planId: string) => {
+    navigate(`/inspections?highlightId=${planId}`);
+  };
+
+  const handleSelfCheckClick = (recordId: string) => {
+    navigate(`/self-check?highlightId=${recordId}`);
+  };
 
   return (
     <div className="space-y-6">
@@ -233,36 +268,207 @@ export default function RiskMapPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-            <h3 className="text-base font-semibold text-slate-800 mb-4">重点关注单位</h3>
-            <div className="space-y-3">
-              {units
-                .filter((u) => u.level === '重点')
-                .slice(0, 4)
-                .map((unit) => (
-                  <div
-                    key={unit.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                        <Building2 className="w-5 h-5 text-red-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-slate-800">{unit.name}</p>
-                        <p className="text-xs text-slate-500">{unit.type}</p>
-                      </div>
+          {currentUnit ? (
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <Building2 className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-800">{currentUnit.name}</h3>
+                    <p className="text-xs text-slate-500">单位详情</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedUnit(null)}
+                  className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors"
+                >
+                  <X className="w-4 h-4 text-slate-500" />
+                </button>
+              </div>
+
+              <div className="p-4 space-y-4 max-h-[500px] overflow-y-auto">
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-slate-500" />
+                    基本信息
+                  </h4>
+                  <div className="bg-slate-50 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">单位类型</span>
+                      <span className="text-xs font-medium text-slate-700">{currentUnit.type}</span>
                     </div>
-                    <div className="text-right">
-                      <StatusTag status={unit.level} />
-                      <p className="text-xs text-slate-500 mt-1">
-                        {unitHazards(unit.id).length} 项隐患
-                      </p>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">单位地址</span>
+                      <span className="text-xs font-medium text-slate-700">{currentUnit.address}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">风险等级</span>
+                      <StatusTag status={currentUnit.level} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">联系人</span>
+                      <span className="text-xs font-medium text-slate-700">{currentUnit.contact}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">联系电话</span>
+                      <span className="text-xs font-medium text-slate-700">{currentUnit.phone}</span>
                     </div>
                   </div>
-                ))}
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-500" />
+                    当前未完成隐患
+                    <span className="text-xs font-normal text-slate-500">({unitPendingHazards.length})</span>
+                  </h4>
+                  <div className="space-y-2">
+                    {unitPendingHazards.length > 0 ? (
+                      unitPendingHazards.map((hazard: Hazard) => (
+                        <div
+                          key={hazard.id}
+                          onClick={() => handleHazardClick(hazard.id)}
+                          className="p-3 bg-slate-50 rounded-lg hover:bg-amber-50 transition-colors cursor-pointer group"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-slate-700 line-clamp-2 group-hover:text-amber-700">
+                                {hazard.description}
+                              </p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <StatusTag status={hazard.status} variant="hazard" />
+                                <span className="text-xs text-slate-500 flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  {hazard.deadline}
+                                </span>
+                              </div>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-amber-500 flex-shrink-0 mt-0.5" />
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-4 text-center text-xs text-slate-500 bg-slate-50 rounded-lg">
+                        暂无
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    <ClipboardList className="w-4 h-4 text-blue-500" />
+                    最近待开始检查计划
+                    <span className="text-xs font-normal text-slate-500">({unitPendingPlans.length})</span>
+                  </h4>
+                  <div className="space-y-2">
+                    {unitPendingPlans.length > 0 ? (
+                      unitPendingPlans.map((plan: InspectionPlan) => (
+                        <div
+                          key={plan.id}
+                          onClick={() => handlePlanClick(plan.id)}
+                          className="p-3 bg-slate-50 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer group"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-slate-700 line-clamp-1 group-hover:text-blue-700">
+                                {plan.name}
+                              </p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <StatusTag status={plan.status} variant="plan" />
+                                <span className="text-xs text-slate-500 flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  {plan.startDate}
+                                </span>
+                              </div>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-500 flex-shrink-0 mt-0.5" />
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-4 text-center text-xs text-slate-500 bg-slate-50 rounded-lg">
+                        暂无
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                    <FileCheck className="w-4 h-4 text-green-500" />
+                    待审核自查记录
+                    <span className="text-xs font-normal text-slate-500">({unitPendingSelfChecks.length})</span>
+                  </h4>
+                  <div className="space-y-2">
+                    {unitPendingSelfChecks.length > 0 ? (
+                      unitPendingSelfChecks.map((record: SelfCheckRecord) => (
+                        <div
+                          key={record.id}
+                          onClick={() => handleSelfCheckClick(record.id)}
+                          className="p-3 bg-slate-50 rounded-lg hover:bg-green-50 transition-colors cursor-pointer group"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-slate-700 line-clamp-1 group-hover:text-green-700">
+                                {record.checkDate} 自查记录
+                              </p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <StatusTag status={record.status} />
+                                <span className="text-xs text-slate-500 flex items-center gap-1">
+                                  <User className="w-3 h-3" />
+                                  {record.checker}
+                                </span>
+                              </div>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-green-500 flex-shrink-0 mt-0.5" />
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-4 text-center text-xs text-slate-500 bg-slate-50 rounded-lg">
+                        暂无
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+              <h3 className="text-base font-semibold text-slate-800 mb-4">重点关注单位</h3>
+              <div className="space-y-3">
+                {units
+                  .filter((u) => u.level === '重点')
+                  .slice(0, 4)
+                  .map((unit) => (
+                    <div
+                      key={unit.id}
+                      onClick={() => setSelectedUnit(unit.id)}
+                      className="flex items-center justify-between p-3 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                          <Building2 className="w-5 h-5 text-red-600" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-slate-800">{unit.name}</p>
+                          <p className="text-xs text-slate-500">{unit.type}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <StatusTag status={unit.level} />
+                        <p className="text-xs text-slate-500 mt-1">
+                          {unitHazards(unit.id).length} 项隐患
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

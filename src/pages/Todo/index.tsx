@@ -9,21 +9,23 @@ import {
   MapPin,
   Building2,
   Calendar,
-  User
+  User,
+  Megaphone
 } from 'lucide-react';
 import { StatsCard } from '@/components/common/StatsCard';
 import { StatusTag } from '@/components/common/StatusTag';
 import { useAppStore } from '@/store';
-import type { Hazard, InspectionPlan, SelfCheckRecord, Report } from '@/types';
+import type { Hazard, InspectionPlan, SelfCheckRecord, Report, SupervisionRecord } from '@/types';
 
 export default function TodoPage() {
   const navigate = useNavigate();
-  const { hazards, inspectionPlans, selfCheckRecords, reports, units } = useAppStore();
+  const { hazards, inspectionPlans, selfCheckRecords, reports, units, supervisionRecords } = useAppStore();
 
   const pendingHazards = hazards.filter((h) => h.status === '待整改');
   const pendingPlans = inspectionPlans.filter((p) => p.status === '未开始');
   const pendingSelfChecks = selfCheckRecords.filter((r) => r.status === '待审核');
   const pendingReports = reports.filter((r) => r.status === '待受理');
+  const pendingSupervisions = supervisionRecords.filter((r) => r.status === '待处理');
 
   const getUnitName = (unitId: string) => {
     const unit = units.find((u) => u.id === unitId);
@@ -62,9 +64,22 @@ export default function TodoPage() {
     }
   };
 
+  const handleSupervisionClick = (hazardId?: string) => {
+    if (hazardId) {
+      navigate(`/hazards?highlightId=${hazardId}`);
+    } else {
+      navigate('/hazards');
+    }
+  };
+
+  const getHazardDescription = (hazardId: string) => {
+    const hazard = hazards.find((h) => h.id === hazardId);
+    return hazard ? hazard.description : '未知隐患';
+  };
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatsCard
           title="待整改隐患"
           value={pendingHazards.length}
@@ -88,6 +103,12 @@ export default function TodoPage() {
           value={pendingReports.length}
           icon={MessageSquare}
           color="green"
+        />
+        <StatsCard
+          title="待处理督办"
+          value={pendingSupervisions.length}
+          icon={Megaphone}
+          color="blue"
         />
       </div>
 
@@ -318,6 +339,66 @@ export default function TodoPage() {
               <div className="py-12 text-center">
                 <Bell className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                 <p className="text-slate-500">暂无待受理举报</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+          <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                <Megaphone className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-800">督办待处理</h3>
+                <p className="text-sm text-slate-500">共 {pendingSupervisions.length} 项待处理</p>
+              </div>
+            </div>
+            <button
+              onClick={() => handleSupervisionClick()}
+              className="inline-flex items-center gap-1 text-sm text-purple-600 hover:text-purple-700 font-medium"
+            >
+              查看全部
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="divide-y divide-slate-200">
+            {pendingSupervisions.length > 0 ? (
+              pendingSupervisions.slice(0, 5).map((record: SupervisionRecord) => (
+                <div
+                  key={record.id}
+                  onClick={() => handleSupervisionClick(record.hazardId)}
+                  className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
+                        <Megaphone className="w-4 h-4 text-purple-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-slate-800 line-clamp-1">{record.type} - {getHazardDescription(record.hazardId)}</p>
+                        <p className="text-xs text-slate-500 flex items-center gap-1 mt-1">
+                          <FileCheck className="w-3 h-3" />
+                          {record.content}
+                        </p>
+                        <p className="text-xs text-slate-500 flex items-center gap-1 mt-1">
+                          <User className="w-3 h-3" />
+                          接收人：{record.receiver}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <StatusTag status={record.status} variant="plan" />
+                      <p className="text-xs text-slate-500">截止: {record.deadline}</p>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="py-12 text-center">
+                <Bell className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <p className="text-slate-500">暂无待处理督办</p>
               </div>
             )}
           </div>
