@@ -23,19 +23,20 @@ import {
   XCircle,
   Target,
   BookOpen,
-  PlayCircle
+  PlayCircle,
+  Plus,
+  Building2,
+  LogIn,
+  LogOut
 } from 'lucide-react';
 import { StatusTag } from '@/components/common/StatusTag';
 import { StatsCard } from '@/components/common/StatsCard';
+import { useAppStore } from '@/store';
 import {
-  mockTrainings,
-  mockAttendeeRecords,
-  mockExamScores,
-  mockDrillRecords,
   mockExams,
   mockExamQuestions
 } from '@/utils/mock';
-import type { Training, AttendeeRecord, ExamScore, DrillRecord, ExamQuestion } from '@/types';
+import type { Training, AttendeeRecord, ExamScore, DrillRecord, ExamQuestion, TrainingType } from '@/types';
 import { cn } from '@/lib/utils';
 
 type TabType = 'trainings' | 'exams' | 'drills';
@@ -50,16 +51,31 @@ export default function TrainingPage() {
   const [selectedDrill, setSelectedDrill] = useState<DrillRecord | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('全部');
+  const [showAddTrainingModal, setShowAddTrainingModal] = useState(false);
+  const [showSignInModal, setShowSignInModal] = useState(false);
+  const [showAddDrillModal, setShowAddDrillModal] = useState(false);
 
-  const totalTrainings = mockTrainings.length;
-  const totalParticipants = mockTrainings.reduce((sum, t) => sum + t.participants, 0);
-  const totalDrills = mockDrillRecords.length;
-  const avgExamScore = Math.round(
-    mockExamScores.reduce((sum, e) => sum + e.score, 0) / mockExamScores.length
-  );
+  const {
+    trainings,
+    attendeeRecords,
+    examScores,
+    drillRecords,
+    addTraining,
+    updateTraining,
+    addAttendeeRecord,
+    updateAttendeeRecord,
+    addDrillRecord
+  } = useAppStore();
+
+  const totalTrainings = trainings.length;
+  const totalParticipants = trainings.reduce((sum, t) => sum + t.participants, 0);
+  const totalDrills = drillRecords.length;
+  const avgExamScore = examScores.length > 0
+    ? Math.round(examScores.reduce((sum, e) => sum + e.score, 0) / examScores.length)
+    : 0;
 
   const filteredTrainings = useMemo(() => {
-    return mockTrainings.filter((training) => {
+    return trainings.filter((training) => {
       const matchesSearch =
         training.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         training.type.toLowerCase().includes(searchQuery.toLowerCase());
@@ -67,14 +83,14 @@ export default function TrainingPage() {
         statusFilter === '全部' || training.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-  }, [searchQuery, statusFilter]);
+  }, [searchQuery, statusFilter, trainings]);
 
   const getTrainingAttendees = (trainingId: string) => {
-    return mockAttendeeRecords.filter((a) => a.trainingId === trainingId);
+    return attendeeRecords.filter((a) => a.trainingId === trainingId);
   };
 
   const getTrainingExamScores = (trainingId: string) => {
-    return mockExamScores.filter((e) => e.trainingId === trainingId);
+    return examScores.filter((e) => e.trainingId === trainingId);
   };
 
   const openTrainingDetail = (training: Training) => {
@@ -90,6 +106,180 @@ export default function TrainingPage() {
   const openDrillDetail = (drill: DrillRecord) => {
     setSelectedDrill(drill);
     setShowDrillModal(true);
+  };
+
+  const handleAddTraining = (data: {
+    title: string;
+    type: TrainingType;
+    date: string;
+    location: string;
+    participants: number;
+    duration: number;
+    description?: string;
+  }) => {
+    addTraining({
+      ...data,
+      attendeeList: [],
+      materials: []
+    });
+    setShowAddTrainingModal(false);
+  };
+
+  const handleSignIn = (attendeeId: string, action: 'signin' | 'signout') => {
+    const now = new Date();
+    const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    
+    if (action === 'signin') {
+      updateAttendeeRecord(attendeeId, {
+        status: '已签到',
+        signInTime: timeStr
+      });
+    } else {
+      updateAttendeeRecord(attendeeId, {
+        status: '已签退',
+        signOutTime: timeStr
+      });
+    }
+  };
+
+  const handleAddDrill = (data: {
+    title: string;
+    unitName: string;
+    date: string;
+    location: string;
+    participants: number;
+    description: string;
+    problems?: string;
+    improvement?: string;
+  }) => {
+    addDrillRecord({
+      ...data,
+      unitId: 'u' + Date.now(),
+      type: '消防疏散演练',
+      duration: 60,
+      evaluator: useAppStore.getState().currentUser.name,
+      result: '合格'
+    });
+    setShowAddDrillModal(false);
+  };
+
+  const exportExamScores = () => {
+    const headers = ['考生姓名', '单位', '考试名称', '分数', '总分', '是否通过'];
+    const rows = examScores.map((e) => [
+      e.userName,
+      e.unit,
+      e.examTitle,
+      e.score.toString(),
+      e.totalScore.toString(),
+      e.isPassed ? '是' : '否'
+    ]);
+    
+    const csvContent = [headers, ...rows].map((row) => row.join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `考试成绩_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadTrainingMaterial = () => {
+    const content = `消防安全培训资料
+
+一、消防安全基础知识
+1. 我国消防工作的方针：预防为主，防消结合
+2. 消防安全"四个能力"：
+   - 检查消除火灾隐患能力
+   - 组织扑救初起火灾能力
+   - 组织人员疏散逃生能力
+   - 消防宣传教育培训能力
+
+二、火灾预防措施
+1. 定期检查电气线路，避免超负荷用电
+2. 保持疏散通道畅通，严禁堵塞消防通道
+3. 正确使用燃气设备，使用后关闭阀门
+4. 定期维护消防设施，确保完好有效
+
+三、初期火灾扑救
+1. 发现火灾立即拨打119报警
+2. 使用灭火器对准火焰根部喷射
+3. 电器火灾先切断电源再扑救
+4. 油类火灾严禁用水扑救
+
+四、火场逃生自救
+1. 保持冷静，辨明逃生方向
+2. 用湿毛巾捂住口鼻，弯腰低姿前进
+3. 不要乘坐普通电梯
+4. 如无法逃生，关闭门窗等待救援
+
+编制单位：XX街道消防办
+编制日期：${new Date().toISOString().split('T')[0]}`;
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = '消防安全培训资料.txt';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportTrainingReport = (training: Training) => {
+    const attendees = getTrainingAttendees(training.id);
+    const scores = getTrainingExamScores(training.id);
+    const signedInCount = attendees.filter((a) => a.status !== '未签到').length;
+    const passCount = scores.filter((e) => e.isPassed).length;
+
+    const content = `培训总结报告
+
+培训基本信息
+==================
+培训名称：${training.title}
+培训类型：${training.type}
+培训日期：${training.date}
+培训地点：${training.location}
+培训时长：${training.duration} 分钟
+参训人数：${training.participants} 人
+主讲人：${training.instructor || '-'}
+培训状态：${training.status || '-'}
+
+培训内容简介：
+${training.description || '无'}
+
+签到情况统计
+==================
+应到人数：${attendees.length} 人
+实到人数：${signedInCount} 人
+签到率：${attendees.length > 0 ? Math.round((signedInCount / attendees.length) * 100) : 0}%
+
+签到明细：
+${attendees.map((a, idx) => `${idx + 1}. ${a.name} (${a.unit}) - ${a.status} - 签到: ${a.signInTime || '-'} - 签退: ${a.signOutTime || '-'}`).join('\n')}
+
+考试成绩统计
+==================
+参考人数：${scores.length} 人
+通过人数：${passCount} 人
+通过率：${scores.length > 0 ? Math.round((passCount / scores.length) * 100) : 0}%
+平均分：${scores.length > 0 ? Math.round(scores.reduce((sum, e) => sum + e.score, 0) / scores.length) : 0} 分
+
+成绩明细：
+${scores.map((s, idx) => `${idx + 1}. ${s.userName} (${s.unit}) - ${s.score}/${s.totalScore} 分 - ${s.isPassed ? '通过' : '未通过'}`).join('\n')}
+
+培训总结
+==================
+本次培训圆满完成，参训人员整体表现良好。通过系统的理论学习和实操训练，有效提升了参训人员的消防安全意识和应急处置能力。后续将继续加强日常监督和定期培训，确保消防安全工作落到实处。
+
+报告生成时间：${new Date().toLocaleString()}
+编制单位：XX街道消防办`;
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${training.title}_总结报告.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const tabs = [
@@ -166,7 +356,10 @@ export default function TrainingPage() {
                     管理消防安全培训计划，查看培训详情和签到记录
                   </p>
                 </div>
-                <button className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-sm">
+                <button
+                  onClick={() => setShowAddTrainingModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-sm"
+                >
                   <Plus className="w-4 h-4" />
                   <span className="text-sm font-medium">新建培训</span>
                 </button>
@@ -298,7 +491,10 @@ export default function TrainingPage() {
                     查看培训考试成绩，统计分析培训效果
                   </p>
                 </div>
-                <button className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors">
+                <button
+                  onClick={exportExamScores}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
+                >
                   <Download className="w-4 h-4" />
                   <span className="text-sm font-medium">导出成绩</span>
                 </button>
@@ -333,7 +529,7 @@ export default function TrainingPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {mockExamScores.map((exam) => (
+                  {examScores.map((exam) => (
                     <tr
                       key={exam.id}
                       className="hover:bg-slate-50 transition-colors"
@@ -419,7 +615,10 @@ export default function TrainingPage() {
                     记录和管理各单位消防应急疏散演练情况
                   </p>
                 </div>
-                <button className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-sm">
+                <button
+                  onClick={() => setShowAddDrillModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-sm"
+                >
                   <Plus className="w-4 h-4" />
                   <span className="text-sm font-medium">新增记录</span>
                 </button>
@@ -427,7 +626,7 @@ export default function TrainingPage() {
             </div>
 
             <div className="divide-y divide-slate-200">
-              {mockDrillRecords.map((drill) => (
+              {drillRecords.map((drill) => (
                 <div
                   key={drill.id}
                   className="p-4 hover:bg-slate-50 transition-colors cursor-pointer"
@@ -501,6 +700,12 @@ export default function TrainingPage() {
             setShowDetailModal(false);
             setSelectedTraining(null);
           }}
+          onOpenSignIn={() => {
+            setShowDetailModal(false);
+            setShowSignInModal(true);
+          }}
+          onDownloadMaterial={downloadTrainingMaterial}
+          onExportReport={() => exportTrainingReport(selectedTraining)}
         />
       )}
 
@@ -523,6 +728,32 @@ export default function TrainingPage() {
           }}
         />
       )}
+
+      {showAddTrainingModal && (
+        <AddTrainingModal
+          onClose={() => setShowAddTrainingModal(false)}
+          onSubmit={handleAddTraining}
+        />
+      )}
+
+      {showSignInModal && selectedTraining && (
+        <SignInModal
+          training={selectedTraining}
+          attendees={getTrainingAttendees(selectedTraining.id)}
+          onClose={() => {
+            setShowSignInModal(false);
+            setSelectedTraining(null);
+          }}
+          onSignIn={handleSignIn}
+        />
+      )}
+
+      {showAddDrillModal && (
+        <AddDrillModal
+          onClose={() => setShowAddDrillModal(false)}
+          onSubmit={handleAddDrill}
+        />
+      )}
     </div>
   );
 }
@@ -531,12 +762,18 @@ function TrainingDetailModal({
   training,
   attendees,
   examScores,
-  onClose
+  onClose,
+  onOpenSignIn,
+  onDownloadMaterial,
+  onExportReport
 }: {
   training: Training;
   attendees: AttendeeRecord[];
   examScores: ExamScore[];
   onClose: () => void;
+  onOpenSignIn: () => void;
+  onDownloadMaterial: () => void;
+  onExportReport: () => void;
 }) {
   const [activeSubTab, setActiveSubTab] = useState<'info' | 'attendees' | 'exams'>('info');
 
@@ -630,25 +867,22 @@ function TrainingDetailModal({
                   <h4 className="text-sm font-medium text-slate-500 mb-2">培训简介</h4>
                   <p className="text-slate-800 leading-relaxed">{training.description}</p>
                 </div>
-                {training.materials && training.materials.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-medium text-slate-500 mb-2">培训资料</h4>
-                    <div className="space-y-2">
-                      {training.materials.map((material, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg"
-                        >
-                          <FileText className="w-5 h-5 text-slate-400" />
-                          <span className="text-sm text-slate-700 flex-1">{material}</span>
-                          <button className="text-red-600 hover:text-red-700 text-sm font-medium">
-                            下载
-                          </button>
-                        </div>
-                      ))}
+                <div>
+                  <h4 className="text-sm font-medium text-slate-500 mb-2">培训资料</h4>
+                  <div className="space-y-2">
+                    <div
+                      className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors"
+                      onClick={onDownloadMaterial}
+                    >
+                      <FileText className="w-5 h-5 text-slate-400" />
+                      <span className="text-sm text-slate-700 flex-1">消防安全培训资料.txt</span>
+                      <button className="text-red-600 hover:text-red-700 text-sm font-medium flex items-center gap-1">
+                        <Download className="w-4 h-4" />
+                        下载
+                      </button>
                     </div>
                   </div>
-                )}
+                </div>
               </div>
             </div>
           )}
@@ -664,11 +898,14 @@ function TrainingDetailModal({
                   <div className="w-32 h-2 bg-slate-200 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-green-500 rounded-full"
-                      style={{ width: `${(signedInCount / attendees.length) * 100}%` }}
+                      style={{ width: `${attendees.length > 0 ? (signedInCount / attendees.length) * 100 : 0}%` }}
                     />
                   </div>
                 </div>
-                <button className="flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors">
+                <button
+                  onClick={onOpenSignIn}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
+                >
                   <PlayCircle className="w-4 h-4" />
                   开始签到
                 </button>
@@ -745,9 +982,11 @@ function TrainingDetailModal({
                     <span className="text-sm text-slate-600">
                       平均分：
                       <span className="font-semibold text-slate-800">
-                        {Math.round(
-                          examScores.reduce((sum, e) => sum + e.score, 0) / examScores.length
-                        )}
+                        {examScores.length > 0
+                          ? Math.round(
+                              examScores.reduce((sum, e) => sum + e.score, 0) / examScores.length
+                            )
+                          : 0}
                       </span>
                     </span>
                   </div>
@@ -826,9 +1065,19 @@ function TrainingDetailModal({
           >
             关闭
           </button>
+          <button
+            onClick={onExportReport}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" />
+            导出报告
+          </button>
           {training.status === '进行中' && (
-            <button className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-              管理培训
+            <button
+              onClick={onOpenSignIn}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              开始签到
             </button>
           )}
         </div>
@@ -1072,47 +1321,441 @@ function DrillDetailModal({
   );
 }
 
-function Plus({ className }: { className?: string }) {
+function AddTrainingModal({
+  onClose,
+  onSubmit
+}: {
+  onClose: () => void;
+  onSubmit: (data: {
+    title: string;
+    type: TrainingType;
+    date: string;
+    location: string;
+    participants: number;
+    duration: number;
+    description?: string;
+  }) => void;
+}) {
+  const [formData, setFormData] = useState({
+    title: '',
+    type: '消防知识培训' as TrainingType,
+    date: new Date().toISOString().split('T')[0],
+    location: '',
+    participants: 0,
+    duration: 0,
+    description: ''
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit(formData);
+  };
+
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M5 12h14" />
-      <path d="M12 5v14" />
-    </svg>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden">
+        <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-800">新建培训</h3>
+            <p className="text-sm text-slate-500 mt-1">创建新的消防安全培训计划</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-140px)] space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              培训名称 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              placeholder="请输入培训名称"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              培训类型 <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={formData.type}
+              onChange={(e) => setFormData({ ...formData, type: e.target.value as TrainingType })}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white"
+            >
+              <option value="消防知识培训">消防知识培训</option>
+              <option value="应急演练">应急演练</option>
+              <option value="技能培训">技能培训</option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                培训日期 <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                required
+                value={formData.date}
+                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                培训时长(分钟) <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                required
+                min="1"
+                value={formData.duration || ''}
+                onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 0 })}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                placeholder="请输入时长"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              培训地点 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.location}
+              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              placeholder="请输入培训地点"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              参与人数 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="number"
+              required
+              min="1"
+              value={formData.participants || ''}
+              onChange={(e) => setFormData({ ...formData, participants: parseInt(e.target.value) || 0 })}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              placeholder="请输入参与人数"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              培训简介
+            </label>
+            <textarea
+              rows={3}
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
+              placeholder="请输入培训简介"
+            />
+          </div>
+        </form>
+
+        <div className="p-6 border-t border-slate-200 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            取消
+          </button>
+          <button
+            type="submit"
+            onClick={handleSubmit}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            创建培训
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
-function Building2({ className }: { className?: string }) {
+function SignInModal({
+  training,
+  attendees,
+  onClose,
+  onSignIn
+}: {
+  training: Training;
+  attendees: AttendeeRecord[];
+  onClose: () => void;
+  onSignIn: (attendeeId: string, action: 'signin' | 'signout') => void;
+}) {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z" />
-      <path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
-      <path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2" />
-      <path d="M10 6h4" />
-      <path d="M10 10h4" />
-      <path d="M10 14h4" />
-      <path d="M10 18h4" />
-    </svg>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
+        <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-800">签到管理</h3>
+            <p className="text-sm text-slate-500 mt-1">{training.title}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+          <div className="space-y-3">
+            {attendees.map((attendee) => (
+              <div
+                key={attendee.id}
+                className="flex items-center justify-between p-4 bg-slate-50 rounded-xl"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm">
+                    <User className="w-5 h-5 text-slate-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">{attendee.name}</p>
+                    <p className="text-xs text-slate-500">{attendee.unit}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <StatusTag status={attendee.status} variant="attendee" />
+                  {attendee.status === '未签到' && (
+                    <button
+                      onClick={() => onSignIn(attendee.id, 'signin')}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      <LogIn className="w-3.5 h-3.5" />
+                      签到
+                    </button>
+                  )}
+                  {attendee.status === '已签到' && (
+                    <button
+                      onClick={() => onSignIn(attendee.id, 'signout')}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      签退
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {attendees.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Users className="w-12 h-12 text-slate-300 mb-3" />
+                <p className="text-slate-500">暂无参训人员</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-slate-200 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            关闭
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddDrillModal({
+  onClose,
+  onSubmit
+}: {
+  onClose: () => void;
+  onSubmit: (data: {
+    title: string;
+    unitName: string;
+    date: string;
+    location: string;
+    participants: number;
+    description: string;
+    problems?: string;
+    improvement?: string;
+  }) => void;
+}) {
+  const [formData, setFormData] = useState({
+    title: '',
+    unitName: '',
+    date: new Date().toISOString().split('T')[0],
+    location: '',
+    participants: 0,
+    description: '',
+    problems: '',
+    improvement: ''
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit(formData);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden">
+        <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-800">新增演练记录</h3>
+            <p className="text-sm text-slate-500 mt-1">记录消防应急疏散演练情况</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-140px)] space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              演练标题 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              placeholder="请输入演练标题"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              参演单位 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.unitName}
+              onChange={(e) => setFormData({ ...formData, unitName: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              placeholder="请输入参演单位名称"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                演练时间 <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                required
+                value={formData.date}
+                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                参演人数 <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                required
+                min="1"
+                value={formData.participants || ''}
+                onChange={(e) => setFormData({ ...formData, participants: parseInt(e.target.value) || 0 })}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                placeholder="请输入人数"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              演练地点 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.location}
+              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              placeholder="请输入演练地点"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              演练概况 <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              rows={3}
+              required
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
+              placeholder="请简要描述演练过程"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              存在问题
+            </label>
+            <textarea
+              rows={2}
+              value={formData.problems}
+              onChange={(e) => setFormData({ ...formData, problems: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
+              placeholder="请描述演练中发现的问题"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              改进措施
+            </label>
+            <textarea
+              rows={2}
+              value={formData.improvement}
+              onChange={(e) => setFormData({ ...formData, improvement: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
+              placeholder="请提出改进措施和建议"
+            />
+          </div>
+        </form>
+
+        <div className="p-6 border-t border-slate-200 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            取消
+          </button>
+          <button
+            type="submit"
+            onClick={handleSubmit}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            保存记录
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

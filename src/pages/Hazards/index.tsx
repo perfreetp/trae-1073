@@ -25,7 +25,7 @@ import { useAppStore } from '@/store';
 import type { Hazard } from '@/types';
 
 export default function HazardsPage() {
-  const { hazards, units, updateHazard } = useAppStore();
+  const { hazards, units, updateHazard, addHazard } = useAppStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [levelFilter, setLevelFilter] = useState<string>('all');
@@ -33,9 +33,20 @@ export default function HazardsPage() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showRectifyModal, setShowRectifyModal] = useState(false);
   const [showRecheckModal, setShowRecheckModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [rectifyDesc, setRectifyDesc] = useState('');
   const [recheckResult, setRecheckResult] = useState<'通过' | '不通过'>('通过');
   const [recheckComment, setRecheckComment] = useState('');
+  const [newHazard, setNewHazard] = useState({
+    unitId: '',
+    location: '',
+    description: '',
+    level: '一般' as Hazard['level'],
+    deadline: '',
+    responsiblePerson: '',
+    responsiblePhone: ''
+  });
+  const [newHazardPhotos, setNewHazardPhotos] = useState<string[]>([]);
 
   const totalHazards = hazards.length;
   const pendingHazards = hazards.filter((h) => h.status === '待整改').length;
@@ -93,6 +104,40 @@ export default function HazardsPage() {
       setRecheckComment('');
       setSelectedHazard(null);
     }
+  };
+
+  const handleAddHazard = () => {
+    if (newHazard.unitId && newHazard.description && newHazard.location) {
+      const hazard: Hazard = {
+        id: `h${Date.now()}`,
+        unitId: newHazard.unitId,
+        description: newHazard.description,
+        location: newHazard.location,
+        level: newHazard.level,
+        images: newHazardPhotos.length > 0 ? newHazardPhotos : ['/new_hazard.jpg'],
+        status: '待整改',
+        foundDate: new Date().toISOString().split('T')[0],
+        deadline: newHazard.deadline || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        responsiblePerson: newHazard.responsiblePerson || '待指派',
+        responsiblePhone: newHazard.responsiblePhone || ''
+      };
+      addHazard(hazard);
+      setShowAddModal(false);
+      setNewHazard({
+        unitId: '',
+        location: '',
+        description: '',
+        level: '一般',
+        deadline: '',
+        responsiblePerson: '',
+        responsiblePhone: ''
+      });
+      setNewHazardPhotos([]);
+    }
+  };
+
+  const addPhotoPlaceholder = () => {
+    setNewHazardPhotos([...newHazardPhotos, `/photo_${Date.now()}.jpg`]);
   };
 
   const openDetail = (hazard: Hazard) => {
@@ -170,7 +215,10 @@ export default function HazardsPage() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-semibold text-slate-800">隐患清单</h2>
-              <button className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg text-sm font-medium hover:from-red-600 hover:to-red-700 transition-all shadow-md shadow-red-500/25">
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg text-sm font-medium hover:from-red-600 hover:to-red-700 transition-all shadow-md shadow-red-500/25"
+              >
                 <Plus className="w-4 h-4" />
                 新增隐患
               </button>
@@ -664,6 +712,198 @@ export default function HazardsPage() {
                 className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg text-sm hover:from-blue-600 hover:to-blue-700 transition-all"
               >
                 确认复查
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl">
+            <div className="bg-gradient-to-r from-red-500 to-red-600 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white">新增隐患登记</h3>
+                <p className="text-red-100 text-sm">请填写隐患相关信息</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAddModal(false);
+                  setNewHazard({
+                    unitId: '',
+                    location: '',
+                    description: '',
+                    level: '一般',
+                    deadline: '',
+                    responsiblePerson: '',
+                    responsiblePhone: ''
+                  });
+                  setNewHazardPhotos([]);
+                }}
+                className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              >
+                <XCircle className="w-5 h-5 text-white" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)] space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    所属单位 <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={newHazard.unitId}
+                    onChange={(e) => setNewHazard({ ...newHazard, unitId: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                  >
+                    <option value="">请选择单位</option>
+                    {units.map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {unit.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    隐患等级 <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={newHazard.level}
+                    onChange={(e) => setNewHazard({ ...newHazard, level: e.target.value as Hazard['level'] })}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                  >
+                    <option value="一般">一般隐患</option>
+                    <option value="较大">较大隐患</option>
+                    <option value="重大">重大隐患</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    隐患位置 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newHazard.location}
+                    onChange={(e) => setNewHazard({ ...newHazard, location: e.target.value })}
+                    placeholder="请输入隐患具体位置"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    整改期限
+                  </label>
+                  <input
+                    type="date"
+                    value={newHazard.deadline}
+                    onChange={(e) => setNewHazard({ ...newHazard, deadline: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  隐患描述 <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={newHazard.description}
+                  onChange={(e) => setNewHazard({ ...newHazard, description: e.target.value })}
+                  rows={3}
+                  placeholder="请详细描述隐患情况..."
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    整改责任人
+                  </label>
+                  <input
+                    type="text"
+                    value={newHazard.responsiblePerson}
+                    onChange={(e) => setNewHazard({ ...newHazard, responsiblePerson: e.target.value })}
+                    placeholder="请输入责任人姓名"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    联系电话
+                  </label>
+                  <input
+                    type="tel"
+                    value={newHazard.responsiblePhone}
+                    onChange={(e) => setNewHazard({ ...newHazard, responsiblePhone: e.target.value })}
+                    placeholder="请输入联系电话"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  现场照片
+                </label>
+                <div className="flex flex-wrap gap-3">
+                  {newHazardPhotos.map((photo, idx) => (
+                    <div
+                      key={idx}
+                      className="relative w-20 h-20 bg-slate-100 rounded-lg flex items-center justify-center border border-slate-200"
+                    >
+                      <Camera className="w-8 h-8 text-slate-400" />
+                      <button
+                        onClick={() => setNewHazardPhotos(newHazardPhotos.filter((_, i) => i !== idx))}
+                        className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={addPhotoPlaceholder}
+                    className="w-20 h-20 border-2 border-dashed border-slate-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-red-400 hover:bg-red-50 transition-colors"
+                  >
+                    <Plus className="w-6 h-6 text-slate-400" />
+                    <span className="text-xs text-slate-500 mt-1">添加照片</span>
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 mt-2">点击添加照片占位，支持多张上传</p>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowAddModal(false);
+                  setNewHazard({
+                    unitId: '',
+                    location: '',
+                    description: '',
+                    level: '一般',
+                    deadline: '',
+                    responsiblePerson: '',
+                    responsiblePhone: ''
+                  });
+                  setNewHazardPhotos([]);
+                }}
+                className="px-5 py-2.5 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-100 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleAddHazard}
+                disabled={!newHazard.unitId || !newHazard.description || !newHazard.location}
+                className="px-5 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg text-sm hover:from-red-600 hover:to-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                提交登记
               </button>
             </div>
           </div>

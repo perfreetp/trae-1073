@@ -9,7 +9,8 @@ import {
   BarChart3,
   ChevronLeft,
   ChevronRight,
-  Flame
+  Flame,
+  FileCheck
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 
@@ -18,6 +19,7 @@ const menuItems = [
   { path: '/units', icon: Building2, label: '单位档案' },
   { path: '/inspections', icon: ClipboardList, label: '检查计划' },
   { path: '/hazards', icon: AlertTriangle, label: '隐患整改' },
+  { path: '/self-check', icon: FileCheck, label: '物业自查' },
   { path: '/training', icon: GraduationCap, label: '宣传培训' },
   { path: '/reports', icon: MessageSquare, label: '举报受理' },
   { path: '/analytics', icon: BarChart3, label: '数据分析' }

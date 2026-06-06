@@ -65,9 +65,124 @@ export default function AnalyticsPage() {
   const redCardCount = mockRedYellowCards.filter(c => c.cardType === '红牌').length;
   const yellowCardCount = mockRedYellowCards.filter(c => c.cardType === '黄牌').length;
 
+  const generateCSV = (headers: string[], rows: string[][], filename: string) => {
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+    
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const generateTXT = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${filename}_${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const handleExport = (type: string) => {
     setShowExportMenu(false);
-    console.log(`导出${type}报表`);
+    
+    const currentDate = new Date().toLocaleDateString('zh-CN');
+    
+    if (type === '隐患分析') {
+      const headers = ['编号', '隐患描述', '所属单位', '风险等级', '当前状态', '发现日期', '整改期限', '责任人'];
+      const rows = mockHazards.map(h => {
+        const unit = mockUnits.find(u => u.id === h.unitId);
+        return [
+          h.id.toUpperCase(),
+          h.description,
+          unit?.name || '未知',
+          h.level,
+          h.status,
+          h.foundDate,
+          h.deadline,
+          h.responsiblePerson
+        ];
+      });
+      generateCSV(headers, rows, '消防隐患分析报表');
+    } else if (type === '区域统计') {
+      const headers = ['区域名称', '监管单位数', '隐患总数', '整改完成率', '检查覆盖率'];
+      const rows = mockAreaStats.map(s => [
+        s.name,
+        s.unitCount.toString(),
+        s.hazardCount.toString(),
+        `${s.rectificationRate}%`,
+        `${s.inspectionRate}%`
+      ]);
+      generateCSV(headers, rows, '区域隐患统计报表');
+    } else if (type === '月度汇总') {
+      const headers = ['月份', '发现隐患数', '已整改数', '检查次数', '整改率'];
+      const rows = mockMonthlyStats.map(m => [
+        m.month,
+        m.hazards.toString(),
+        m.rectified.toString(),
+        m.inspections.toString(),
+        `${Math.round((m.rectified / m.hazards) * 100)}%`
+      ]);
+      generateCSV(headers, rows, '月度隐患汇总报表');
+    } else if (type === '全部数据') {
+      const content = `
+========================================
+      城市消防隐患治理 - 全部数据报表
+========================================
+生成时间: ${new Date().toLocaleString('zh-CN')}
+
+一、监管单位概况
+----------------------------------------
+监管单位总数: ${mockUnits.length} 家
+重点单位: ${mockUnits.filter(u => u.level === '重点').length} 家
+关注单位: ${mockUnits.filter(u => u.level === '关注').length} 家
+一般单位: ${mockUnits.filter(u => u.level === '一般').length} 家
+
+二、隐患总体情况
+----------------------------------------
+隐患总数: ${mockHazards.length} 项
+待整改: ${mockHazards.filter(h => h.status === '待整改').length} 项
+整改中: ${mockHazards.filter(h => h.status === '整改中').length} 项
+待复查: ${mockHazards.filter(h => h.status === '待复查').length} 项
+已完成: ${mockHazards.filter(h => h.status === '已完成').length} 项
+已逾期: ${mockHazards.filter(h => h.status === '已逾期').length} 项
+整改完成率: ${Math.round((mockHazards.filter(h => h.status === '已完成').length / mockHazards.length) * 100)}%
+
+三、风险等级分布
+----------------------------------------
+一般隐患: ${mockHazards.filter(h => h.level === '一般').length} 项
+较大隐患: ${mockHazards.filter(h => h.level === '较大').length} 项
+重大隐患: ${mockHazards.filter(h => h.level === '重大').length} 项
+
+四、红黄牌标记
+----------------------------------------
+红牌单位: ${mockRedYellowCards.filter(c => c.cardType === '红牌').length} 家
+黄牌单位: ${mockRedYellowCards.filter(c => c.cardType === '黄牌').length} 家
+
+五、区域排行（按隐患数量）
+----------------------------------------
+${mockAreaStats.sort((a, b) => b.hazardCount - a.hazardCount).map((s, i) => 
+  `${i + 1}. ${s.name} - ${s.hazardCount}项隐患, 整改率${s.rectificationRate}%`
+).join('\n')}
+
+========================================
+报表结束
+========================================
+      `.trim();
+      generateTXT(content, '消防隐患治理全部数据报表');
+    }
   };
 
   const getLevelColor = (level: string) => {

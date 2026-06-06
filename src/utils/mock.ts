@@ -669,3 +669,83 @@ export const mockRedYellowCards = [
   { unitId: 'u8', unitName: '星光KTV', cardType: '黄牌', reason: '多次发现同类隐患，整改不及时', date: '2025-04-10' },
   { unitId: 'u6', unitName: '阳光花园小区', cardType: '黄牌', reason: '消防设施维护不到位', date: '2025-03-28' }
 ];
+
+export const mockSelfCheckRecords = [
+  {
+    id: 'sc1',
+    unitId: 'u6',
+    unitName: '阳光花园小区',
+    checkDate: '2025-04-20',
+    checker: '陈物业',
+    checkerPhone: '134****2345',
+    items: [
+      { id: 'sci1', question: '消防通道是否畅通？', result: '合格' as const },
+      { id: 'sci2', question: '楼道灭火器是否完好有效？', result: '合格' as const },
+      { id: 'sci3', question: '消火栓是否有遮挡？', result: '不合格' as const, remark: '3号楼2单元消火栓被杂物遮挡' },
+      { id: 'sci4', question: '应急照明是否正常？', result: '合格' as const },
+      { id: 'sci5', question: '疏散指示标志是否完好？', result: '合格' as const }
+    ],
+    problems: '3号楼2单元消火栓被杂物遮挡，已通知业主清理；部分电动车在楼道内充电。',
+    images: ['/selfcheck1.jpg', '/selfcheck2.jpg'],
+    status: '已通过' as const,
+    reviewComment: '自查认真，问题描述清晰，请尽快整改完成。',
+    createdAt: '2025-04-20'
+  },
+  {
+    id: 'sc2',
+    unitId: 'u1',
+    unitName: '万达广场',
+    checkDate: '2025-04-18',
+    checker: '张安全',
+    checkerPhone: '138****1111',
+    items: [
+      { id: 'sci6', question: '消防通道是否畅通？', result: '合格' as const },
+      { id: 'sci7', question: '灭火器是否在有效期内？', result: '合格' as const },
+      { id: 'sci8', question: '消火栓是否完好可用？', result: '合格' as const },
+      { id: 'sci9', question: '喷淋系统是否正常？', result: '合格' as const },
+      { id: 'sci10', question: '消防控制室值班是否规范？', result: '合格' as const }
+    ],
+    problems: '未发现重大隐患，个别商铺货物摆放靠近通道，已现场整改。',
+    images: ['/selfcheck3.jpg'],
+    status: '已通过' as const,
+    reviewComment: '自查情况良好，继续保持。',
+    createdAt: '2025-04-18'
+  },
+  {
+    id: 'sc3',
+    unitId: 'u7',
+    unitName: '家乐福超市',
+    checkDate: '2025-04-22',
+    checker: '刘店长',
+    checkerPhone: '133****6789',
+    items: [
+      { id: 'sci11', question: '安全出口是否畅通？', result: '不合格' as const, remark: '东侧安全出口被购物车堵塞' },
+      { id: 'sci12', question: '灭火器是否充足有效？', result: '合格' as const },
+      { id: 'sci13', question: '应急照明是否正常？', result: '合格' as const },
+      { id: 'sci14', question: '疏散指示是否清晰？', result: '合格' as const }
+    ],
+    problems: '东侧安全出口被购物车堵塞，需要立即清理；仓库部分货物堆放过高，影响烟感探测。',
+    images: ['/selfcheck4.jpg', '/selfcheck5.jpg'],
+    status: '待审核' as const,
+    createdAt: '2025-04-22'
+  },
+  {
+    id: 'sc4',
+    unitId: 'u2',
+    unitName: '希尔顿酒店',
+    checkDate: '2025-04-15',
+    checker: '李安保',
+    checkerPhone: '139****2222',
+    items: [
+      { id: 'sci15', question: '客房疏散通道是否畅通？', result: '合格' as const },
+      { id: 'sci16', question: '厨房燃气管道是否正常？', result: '合格' as const },
+      { id: 'sci17', question: '消防电梯是否正常？', result: '合格' as const },
+      { id: 'sci18', question: '防毒面具是否配备齐全？', result: '合格' as const }
+    ],
+    problems: '未发现明显隐患，各项设施运行正常。',
+    images: [],
+    status: '已驳回' as const,
+    reviewComment: '请补充现场照片，检查项目不够全面，请增加对消防水泵、防排烟系统的检查。',
+    createdAt: '2025-04-15'
+  }
+];

@@ -206,3 +206,25 @@ export interface MonthlyStats {
   rectified: number;
   inspections: number;
 }
+
+export interface SelfCheckItem {
+  id: string;
+  question: string;
+  result: '合格' | '不合格' | '不适用';
+  remark?: string;
+}
+
+export interface SelfCheckRecord {
+  id: string;
+  unitId: string;
+  unitName: string;
+  checkDate: string;
+  checker: string;
+  checkerPhone: string;
+  items: SelfCheckItem[];
+  problems: string;
+  images: string[];
+  status: '待审核' | '已通过' | '已驳回';
+  reviewComment?: string;
+  createdAt: string;
+}

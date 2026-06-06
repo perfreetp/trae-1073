@@ -18,41 +18,73 @@ import {
   X,
   Check,
   GripVertical,
-  AlertCircle
+  AlertCircle,
+  Save
 } from 'lucide-react';
 import { StatusTag } from '@/components/common/StatusTag';
 import { StatsCard } from '@/components/common/StatsCard';
-import { mockInspectionPlans, mockUnits, mockCheckLists } from '@/utils/mock';
-import type { InspectionPlan, CheckList, CheckItem } from '@/types';
+import { mockUnits, mockCheckLists } from '@/utils/mock';
+import { useAppStore } from '@/store';
+import type { InspectionPlan, CheckList, CheckItem, PlanType } from '@/types';
 import { cn } from '@/lib/utils';
 
 type ViewMode = 'calendar' | 'table';
 
+interface CheckItemAnswer {
+  itemId: string;
+  answer: string | string[];
+  remark?: string;
+}
+
 export default function InspectionsPage() {
+  const {
+    inspectionPlans,
+    units,
+    addInspectionPlan,
+    updateInspectionPlan,
+    deleteInspectionPlan
+  } = useAppStore();
+
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedPlan, setSelectedPlan] = useState<InspectionPlan | null>(null);
   const [showChecklistModal, setShowChecklistModal] = useState(false);
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showInspectionForm, setShowInspectionForm] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<InspectionPlan | null>(null);
+  const [planToDelete, setPlanToDelete] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('全部');
 
+  const [formData, setFormData] = useState({
+    name: '',
+    type: '日常检查' as PlanType,
+    startDate: '',
+    endDate: '',
+    unitIds: [] as string[],
+    inspector: ''
+  });
+
+  const [answers, setAnswers] = useState<CheckItemAnswer[]>([]);
+
   const filteredPlans = useMemo(() => {
-    return mockInspectionPlans.filter((plan) => {
+    return inspectionPlans.filter((plan) => {
       const matchesSearch = plan.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         plan.type.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === '全部' || plan.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-  }, [searchQuery, statusFilter]);
+  }, [searchQuery, statusFilter, inspectionPlans]);
 
-  const totalPlans = mockInspectionPlans.length;
-  const pendingPlans = mockInspectionPlans.filter((p) => p.status === '未开始').length;
-  const inProgressPlans = mockInspectionPlans.filter((p) => p.status === '进行中').length;
-  const completedPlans = mockInspectionPlans.filter((p) => p.status === '已完成').length;
+  const totalPlans = inspectionPlans.length;
+  const pendingPlans = inspectionPlans.filter((p) => p.status === '未开始').length;
+  const inProgressPlans = inspectionPlans.filter((p) => p.status === '进行中').length;
+  const completedPlans = inspectionPlans.filter((p) => p.status === '已完成').length;
 
   const getUnitNames = (unitIds: string[]) => {
     return unitIds
-      .map((id) => mockUnits.find((u) => u.id === id)?.name)
+      .map((id) => units.find((u) => u.id === id)?.name || mockUnits.find((u) => u.id === id)?.name)
       .filter(Boolean)
       .join(', ');
   };
@@ -101,6 +133,120 @@ export default function InspectionsPage() {
       date.getDate() === today.getDate() &&
       date.getMonth() === today.getMonth() &&
       date.getFullYear() === today.getFullYear()
+    );
+  };
+
+  const handleOpenNewPlan = () => {
+    setEditingPlan(null);
+    setFormData({
+      name: '',
+      type: '日常检查',
+      startDate: '',
+      endDate: '',
+      unitIds: [],
+      inspector: ''
+    });
+    setShowPlanModal(true);
+  };
+
+  const handleOpenEditPlan = (plan: InspectionPlan) => {
+    setEditingPlan(plan);
+    setFormData({
+      name: plan.name,
+      type: plan.type,
+      startDate: plan.startDate,
+      endDate: plan.endDate,
+      unitIds: plan.unitIds,
+      inspector: plan.inspector || ''
+    });
+    setShowPlanModal(true);
+  };
+
+  const handleSavePlan = () => {
+    if (!formData.name || !formData.startDate || !formData.endDate || formData.unitIds.length === 0) {
+      return;
+    }
+
+    if (editingPlan) {
+      updateInspectionPlan(editingPlan.id, formData);
+    } else {
+      addInspectionPlan(formData);
+    }
+    setShowPlanModal(false);
+  };
+
+  const handleDeleteClick = (planId: string) => {
+    setPlanToDelete(planId);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (planToDelete) {
+      deleteInspectionPlan(planToDelete);
+    }
+    setShowDeleteConfirm(false);
+    setPlanToDelete(null);
+    if (selectedPlan?.id === planToDelete) {
+      setSelectedPlan(null);
+    }
+  };
+
+  const handleStartInspection = (plan: InspectionPlan) => {
+    setSelectedPlan(plan);
+    setAnswers(mockCheckLists[0].items.map((item) => ({
+      itemId: item.id,
+      answer: item.type === 'multiple' ? [] : '',
+      remark: ''
+    })));
+    setShowInspectionForm(true);
+  };
+
+  const handleSubmitInspection = () => {
+    if (!selectedPlan) return;
+
+    const allRequiredAnswered = mockCheckLists[0].items
+      .filter((item) => item.required)
+      .every((item) => {
+        const answer = answers.find((a) => a.itemId === item.id);
+        if (item.type === 'multiple') {
+          return answer && Array.isArray(answer.answer) && answer.answer.length > 0;
+        }
+        return answer && answer.answer !== '';
+      });
+
+    if (!allRequiredAnswered) {
+      alert('请填写所有必填项');
+      return;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const isCompleted = today >= selectedPlan.endDate;
+
+    updateInspectionPlan(selectedPlan.id, {
+      status: isCompleted ? '已完成' : '进行中'
+    });
+
+    setShowInspectionForm(false);
+    setSelectedPlan(null);
+  };
+
+  const handleAnswerChange = (itemId: string, value: string | string[], remark?: string) => {
+    setAnswers((prev) =>
+      prev.map((a) =>
+        a.itemId === itemId
+          ? { ...a, answer: value, remark: remark ?? a.remark }
+          : a
+      )
+    );
+  };
+
+  const handleRemarkChange = (itemId: string, remark: string) => {
+    setAnswers((prev) =>
+      prev.map((a) =>
+        a.itemId === itemId
+          ? { ...a, remark }
+          : a
+      )
     );
   };
 
@@ -156,7 +302,10 @@ export default function InspectionsPage() {
                 <Settings className="w-4 h-4" />
                 <span className="text-sm font-medium">检查表配置</span>
               </button>
-              <button className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-sm">
+              <button
+                onClick={handleOpenNewPlan}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-sm"
+              >
                 <Plus className="w-4 h-4" />
                 <span className="text-sm font-medium">新建计划</span>
               </button>
@@ -397,12 +546,14 @@ export default function InspectionsPage() {
                           <Eye className="w-4 h-4" />
                         </button>
                         <button
+                          onClick={() => handleOpenEditPlan(plan)}
                           className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
                           title="编辑"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
+                          onClick={() => handleDeleteClick(plan.id)}
                           className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           title="删除"
                         >
@@ -418,7 +569,7 @@ export default function InspectionsPage() {
         )}
       </div>
 
-      {selectedPlan && (
+      {selectedPlan && !showInspectionForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
             <div className="p-6 border-b border-slate-200 flex items-center justify-between">
@@ -465,7 +616,7 @@ export default function InspectionsPage() {
                 <h4 className="text-sm font-medium text-slate-500 mb-3">检查单位 ({selectedPlan.unitIds.length})</h4>
                 <div className="space-y-2">
                   {selectedPlan.unitIds.map((unitId) => {
-                    const unit = mockUnits.find((u) => u.id === unitId);
+                    const unit = units.find((u) => u.id === unitId) || mockUnits.find((u) => u.id === unitId);
                     return unit ? (
                       <div
                         key={unitId}
@@ -494,8 +645,314 @@ export default function InspectionsPage() {
               >
                 关闭
               </button>
-              <button className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+              <button
+                onClick={() => handleStartInspection(selectedPlan)}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
                 开始检查
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPlanModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-hidden">
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-800">
+                {editingPlan ? '编辑计划' : '新建计划'}
+              </h3>
+              <button
+                onClick={() => setShowPlanModal(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-6 space-y-5 overflow-y-auto max-h-[calc(90vh-140px)]">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  计划名称 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="请输入计划名称"
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  计划类型 <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={formData.type}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value as PlanType })}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white"
+                >
+                  <option value="日常检查">日常检查</option>
+                  <option value="专项检查">专项检查</option>
+                  <option value="季度检查">季度检查</option>
+                  <option value="年度检查">年度检查</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    开始日期 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.startDate}
+                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    结束日期 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.endDate}
+                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  检查单位 <span className="text-red-500">*</span>
+                </label>
+                <div className="border border-slate-200 rounded-lg p-3 max-h-40 overflow-y-auto space-y-2">
+                  {(units.length > 0 ? units : mockUnits).map((unit) => (
+                    <label key={unit.id} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.unitIds.includes(unit.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setFormData({ ...formData, unitIds: [...formData.unitIds, unit.id] });
+                          } else {
+                            setFormData({ ...formData, unitIds: formData.unitIds.filter((id) => id !== unit.id) });
+                          }
+                        }}
+                        className="w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500"
+                      />
+                      <span className="text-sm text-slate-700">{unit.name}</span>
+                      <span className="text-xs text-slate-400">({unit.type})</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  负责人
+                </label>
+                <input
+                  type="text"
+                  value={formData.inspector}
+                  onChange={(e) => setFormData({ ...formData, inspector: e.target.value })}
+                  placeholder="请输入负责人姓名"
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-200 flex justify-end gap-3">
+              <button
+                onClick={() => setShowPlanModal(false)}
+                className="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSavePlan}
+                disabled={!formData.name || !formData.startDate || !formData.endDate || formData.unitIds.length === 0}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-800">确认删除</h3>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                  <AlertCircle className="w-6 h-6 text-red-600" />
+                </div>
+                <div>
+                  <p className="text-slate-800 font-medium">确定要删除这个检查计划吗？</p>
+                  <p className="text-sm text-slate-500 mt-1">此操作不可撤销</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-200 flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showInspectionForm && selectedPlan && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-800">检查表填写</h3>
+                <p className="text-sm text-slate-500 mt-1">{selectedPlan.name}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowInspectionForm(false);
+                  setSelectedPlan(null);
+                }}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {mockCheckLists[0].items.map((item, index) => {
+                const answer = answers.find((a) => a.itemId === item.id);
+                return (
+                  <div key={item.id} className="p-4 bg-slate-50 rounded-lg">
+                    <div className="flex items-start gap-3 mb-3">
+                      <span className="w-6 h-6 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0">
+                        {index + 1}
+                      </span>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-slate-800">
+                          {item.question}
+                          {item.required && <span className="text-red-500 ml-1">*</span>}
+                        </p>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-white text-slate-600 border border-slate-200 mt-2">
+                          {item.type === 'single' ? '单选题' : item.type === 'multiple' ? '多选题' : '问答题'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {item.type === 'single' && item.options && (
+                      <div className="ml-9 space-y-2">
+                        {item.options.map((option, optIndex) => (
+                          <label key={optIndex} className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={item.id}
+                              value={option}
+                              checked={answer?.answer === option}
+                              onChange={(e) => handleAnswerChange(item.id, e.target.value)}
+                              className="w-4 h-4 text-red-600 border-slate-300 focus:ring-red-500"
+                            />
+                            <span className="text-sm text-slate-700">
+                              {String.fromCharCode(65 + optIndex)}. {option}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+
+                    {item.type === 'multiple' && item.options && (
+                      <div className="ml-9 space-y-2">
+                        {item.options.map((option, optIndex) => (
+                          <label key={optIndex} className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={Array.isArray(answer?.answer) && answer.answer.includes(option)}
+                              onChange={(e) => {
+                                const currentAnswers = Array.isArray(answer?.answer) ? answer.answer : [];
+                                if (e.target.checked) {
+                                  handleAnswerChange(item.id, [...currentAnswers, option]);
+                                } else {
+                                  handleAnswerChange(item.id, currentAnswers.filter((a) => a !== option));
+                                }
+                              }}
+                              className="w-4 h-4 text-red-600 rounded border-slate-300 focus:ring-red-500"
+                            />
+                            <span className="text-sm text-slate-700">
+                              {String.fromCharCode(65 + optIndex)}. {option}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+
+                    {item.type === 'text' && (
+                      <div className="ml-9">
+                        <textarea
+                          value={(answer?.answer as string) || ''}
+                          onChange={(e) => handleAnswerChange(item.id, e.target.value)}
+                          placeholder="请输入您的回答..."
+                          rows={3}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
+                        />
+                      </div>
+                    )}
+
+                    <div className="ml-9 mt-3">
+                      <label className="block text-xs font-medium text-slate-500 mb-1">
+                        备注
+                      </label>
+                      <input
+                        type="text"
+                        value={answer?.remark || ''}
+                        onChange={(e) => handleRemarkChange(item.id, e.target.value)}
+                        placeholder="添加备注（可选）"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="p-6 border-t border-slate-200 flex justify-end gap-3 flex-shrink-0">
+              <button
+                onClick={() => {
+                  setShowInspectionForm(false);
+                  setSelectedPlan(null);
+                }}
+                className="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSubmitInspection}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                <Save className="w-4 h-4" />
+                提交检查
               </button>
             </div>
           </div>
