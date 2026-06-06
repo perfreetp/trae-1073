@@ -22,7 +22,7 @@ import {
 import { StatsCard } from '@/components/common/StatsCard';
 import { StatusTag } from '@/components/common/StatusTag';
 import { useAppStore } from '@/store';
-import type { Hazard } from '@/types';
+import type { Hazard, RecheckRecord } from '@/types';
 
 export default function HazardsPage() {
   const { hazards, units, updateHazard, addHazard } = useAppStore();
@@ -80,10 +80,19 @@ export default function HazardsPage() {
 
   const handleRectify = () => {
     if (selectedHazard && rectifyDesc) {
+      const newRecord: RecheckRecord = {
+        id: `rec${Date.now()}`,
+        date: new Date().toISOString().split('T')[0],
+        type: '整改提交',
+        description: rectifyDesc,
+        operator: selectedHazard.responsiblePerson
+      };
+      const existingRecords = selectedHazard.recheckRecords || [];
       updateHazard(selectedHazard.id, {
         status: '待复查',
         rectificationDescription: rectifyDesc,
-        rectificationImages: ['/rectify1.jpg']
+        rectificationImages: ['/rectify1.jpg'],
+        recheckRecords: [...existingRecords, newRecord]
       });
       setShowRectifyModal(false);
       setRectifyDesc('');
@@ -93,11 +102,22 @@ export default function HazardsPage() {
 
   const handleRecheck = () => {
     if (selectedHazard) {
+      const newRecord: RecheckRecord = {
+        id: `rec${Date.now()}`,
+        date: new Date().toISOString().split('T')[0],
+        type: recheckResult === '通过' ? '复查通过' : '复查不通过',
+        description: recheckResult === '通过' ? '整改复查通过' : '整改复查不通过，需重新整改',
+        operator: '李消防',
+        comment: recheckComment
+      };
+      const existingRecords = selectedHazard.recheckRecords || [];
       updateHazard(selectedHazard.id, {
         status: recheckResult === '通过' ? '已完成' : '整改中',
         recheckDate: new Date().toISOString().split('T')[0],
         recheckResult,
-        rechecker: '李消防'
+        rechecker: '李消防',
+        recheckComment,
+        recheckRecords: [...existingRecords, newRecord]
       });
       setShowRecheckModal(false);
       setRecheckResult('通过');
@@ -171,6 +191,52 @@ export default function HazardsPage() {
     }
 
     return timeline;
+  };
+
+  const getRecheckRecords = (hazard: Hazard): RecheckRecord[] => {
+    const records: RecheckRecord[] = [
+      {
+        id: `${hazard.id}-register`,
+        date: hazard.foundDate,
+        type: '隐患登记',
+        description: hazard.description,
+        operator: '系统'
+      },
+      {
+        id: `${hazard.id}-assign`,
+        date: hazard.foundDate,
+        type: '分派整改',
+        description: `分派给 ${hazard.responsiblePerson} 进行整改`,
+        operator: '管理员'
+      }
+    ];
+
+    if (hazard.recheckRecords && hazard.recheckRecords.length > 0) {
+      records.push(...hazard.recheckRecords);
+    } else {
+      if (hazard.rectificationDescription) {
+        records.push({
+          id: `${hazard.id}-rectify`,
+          date: hazard.deadline,
+          type: '整改提交',
+          description: hazard.rectificationDescription,
+          operator: hazard.responsiblePerson
+        });
+      }
+
+      if (hazard.recheckDate && hazard.recheckResult) {
+        records.push({
+          id: `${hazard.id}-recheck`,
+          date: hazard.recheckDate,
+          type: hazard.recheckResult === '通过' ? '复查通过' : '复查不通过',
+          description: hazard.recheckResult === '通过' ? '整改复查通过' : '整改复查不通过，需重新整改',
+          operator: hazard.rechecker || '复查人',
+          comment: hazard.recheckComment
+        });
+      }
+    }
+
+    return records;
   };
 
   return (
@@ -558,6 +624,76 @@ export default function HazardsPage() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              <div className="mt-8">
+                <h4 className="text-sm font-semibold text-slate-700 mb-4">复查记录</h4>
+                <div className="relative">
+                  {getRecheckRecords(selectedHazard).map((record, idx) => {
+                    const isLast = idx === getRecheckRecords(selectedHazard).length - 1;
+                    const getRecordColor = () => {
+                      switch (record.type) {
+                        case '隐患登记':
+                          return 'bg-red-500';
+                        case '分派整改':
+                          return 'bg-blue-500';
+                        case '整改提交':
+                          return 'bg-amber-500';
+                        case '复查通过':
+                          return 'bg-green-500';
+                        case '复查不通过':
+                          return 'bg-red-500';
+                        default:
+                          return 'bg-slate-500';
+                      }
+                    };
+                    const getRecordIcon = () => {
+                      switch (record.type) {
+                        case '隐患登记':
+                          return AlertTriangle;
+                        case '分派整改':
+                          return User;
+                        case '整改提交':
+                          return CheckSquare;
+                        case '复查通过':
+                          return CheckCircle2;
+                        case '复查不通过':
+                          return XCircle;
+                        default:
+                          return FileText;
+                      }
+                    };
+                    const RecordIcon = getRecordIcon();
+                    return (
+                      <div key={record.id} className="flex items-start gap-4 pb-6 last:pb-0">
+                        <div className="relative flex flex-col items-center">
+                          <div
+                            className={`w-10 h-10 rounded-full flex items-center justify-center z-10 text-white ${getRecordColor()}`}
+                          >
+                            <RecordIcon className="w-5 h-5" />
+                          </div>
+                          {!isLast && (
+                            <div className="absolute top-10 w-0.5 h-full bg-slate-200"></div>
+                          )}
+                        </div>
+                        <div className="pt-2 flex-1">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-medium text-slate-800">{record.type}</p>
+                            <p className="text-xs text-slate-500">{record.date}</p>
+                          </div>
+                          <p className="text-sm text-slate-600 mt-1">{record.description}</p>
+                          <p className="text-xs text-slate-500 mt-1">操作人：{record.operator}</p>
+                          {record.comment && (
+                            <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                              <p className="text-xs font-medium text-red-700 mb-1">复查原因：</p>
+                              <p className="text-sm text-red-600">{record.comment}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

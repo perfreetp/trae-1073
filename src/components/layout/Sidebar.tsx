@@ -10,12 +10,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Flame,
-  FileCheck
+  FileCheck,
+  Bell
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 
 const menuItems = [
   { path: '/', icon: Map, label: '风险地图' },
+  { path: '/todo', icon: Bell, label: '待办中心' },
   { path: '/units', icon: Building2, label: '单位档案' },
   { path: '/inspections', icon: ClipboardList, label: '检查计划' },
   { path: '/hazards', icon: AlertTriangle, label: '隐患整改' },

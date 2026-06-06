@@ -15,12 +15,13 @@ import {
   User,
   Phone,
   Calendar,
-  Download
+  Download,
+  AlertTriangle
 } from 'lucide-react';
 import { StatsCard } from '@/components/common/StatsCard';
 import { StatusTag } from '@/components/common/StatusTag';
 import { useAppStore } from '@/store';
-import type { SelfCheckItem } from '@/types';
+import type { SelfCheckItem, Hazard } from '@/types';
 
 const defaultCheckItems: Omit<SelfCheckItem, 'id'>[] = [
   { question: '消防通道、安全出口是否畅通无阻？', result: '合格' },
@@ -34,12 +35,17 @@ const defaultCheckItems: Omit<SelfCheckItem, 'id'>[] = [
 ];
 
 export default function SelfCheckPage() {
-  const { selfCheckRecords, units, addSelfCheckRecord, updateSelfCheckRecord } = useAppStore();
+  const { selfCheckRecords, units, addSelfCheckRecord, updateSelfCheckRecord, addHazard } = useAppStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [unitFilter, setUnitFilter] = useState<string>('all');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [hasUnqualifiedFilter, setHasUnqualifiedFilter] = useState<string>('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
+  const [showConvertConfirm, setShowConvertConfirm] = useState(false);
 
   const [newRecord, setNewRecord] = useState({
     unitId: '',
@@ -61,7 +67,15 @@ export default function SelfCheckPage() {
       r.unitName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       r.checker.toLowerCase().includes(searchTerm.toLowerCase());
     const matchStatus = statusFilter === 'all' || r.status === statusFilter;
-    return matchSearch && matchStatus;
+    const matchUnit = unitFilter === 'all' || r.unitId === unitFilter;
+    const matchStartDate = !startDate || r.checkDate >= startDate;
+    const matchEndDate = !endDate || r.checkDate <= endDate;
+    const unqualifiedCount = r.items.filter((i: any) => i.result === '不合格').length;
+    const matchUnqualified =
+      hasUnqualifiedFilter === 'all' ||
+      (hasUnqualifiedFilter === 'yes' && unqualifiedCount > 0) ||
+      (hasUnqualifiedFilter === 'no' && unqualifiedCount === 0);
+    return matchSearch && matchStatus && matchUnit && matchStartDate && matchEndDate && matchUnqualified;
   });
 
   const addPhotoPlaceholder = () => {
@@ -120,6 +134,47 @@ export default function SelfCheckPage() {
   const openDetail = (record: any) => {
     setSelectedRecord(record);
     setShowDetailModal(true);
+  };
+
+  const getUnqualifiedItems = (record: any) => {
+    return record.items.filter((item: any) => item.result === '不合格');
+  };
+
+  const addDays = (dateStr: string, days: number) => {
+    const date = new Date(dateStr);
+    date.setDate(date.getDate() + days);
+    return date.toISOString().split('T')[0];
+  };
+
+  const handleConvertToHazards = () => {
+    if (!selectedRecord) return;
+    const unqualifiedItems = getUnqualifiedItems(selectedRecord);
+    if (unqualifiedItems.length === 0) return;
+
+    unqualifiedItems.forEach((item: any) => {
+      const description = item.remark
+        ? `${item.question} - 不合格（${item.remark}）`
+        : `${item.question} - 不合格`;
+
+      const hazard: Omit<Hazard, 'id'> = {
+        unitId: selectedRecord.unitId,
+        description,
+        location: selectedRecord.unitName,
+        level: '一般',
+        images: ['/selfcheck_hazard.jpg'],
+        status: '待整改',
+        foundDate: selectedRecord.checkDate,
+        deadline: addDays(selectedRecord.checkDate, 7),
+        responsiblePerson: selectedRecord.checker,
+        responsiblePhone: selectedRecord.checkerPhone
+      };
+
+      addHazard(hazard as Hazard);
+    });
+
+    setShowConvertConfirm(false);
+    setShowDetailModal(false);
+    setSelectedRecord(null);
   };
 
   const getStatusIcon = (status: string) => {
@@ -255,6 +310,54 @@ ${record.reviewComment || '暂无审核意见'}
                   <option value="待审核">待审核</option>
                   <option value="已通过">已通过</option>
                   <option value="已驳回">已驳回</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-slate-400" />
+                <select
+                  value={unitFilter}
+                  onChange={(e) => setUnitFilter(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                >
+                  <option value="all">全部单位</option>
+                  {units.map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-slate-400" />
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  placeholder="开始日期"
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                />
+                <span className="text-slate-400">至</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  placeholder="结束日期"
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-slate-400" />
+                <select
+                  value={hasUnqualifiedFilter}
+                  onChange={(e) => setHasUnqualifiedFilter(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                >
+                  <option value="all">全部</option>
+                  <option value="yes">有不合格项</option>
+                  <option value="no">无不合格项</option>
                 </select>
               </div>
             </div>
@@ -574,6 +677,15 @@ ${record.reviewComment || '暂无审核意见'}
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {getUnqualifiedItems(selectedRecord).length > 0 && (
+                  <button
+                    onClick={() => setShowConvertConfirm(true)}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg text-sm font-medium hover:from-amber-600 hover:to-orange-600 transition-all shadow-md shadow-amber-500/25"
+                  >
+                    <AlertTriangle className="w-4 h-4" />
+                    一键转隐患
+                  </button>
+                )}
                 <button
                   onClick={() => exportRecord(selectedRecord)}
                   className="p-2 text-slate-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
@@ -613,16 +725,54 @@ ${record.reviewComment || '暂无审核意见'}
                 </div>
               </div>
 
+              {getUnqualifiedItems(selectedRecord).length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold text-red-700 mb-3 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" />
+                    不合格项目 ({getUnqualifiedItems(selectedRecord).length} 项)
+                  </h4>
+                  <div className="space-y-2">
+                    {getUnqualifiedItems(selectedRecord).map((item: any, index: number) => (
+                      <div
+                        key={item.id}
+                        className="flex items-start justify-between p-3 bg-red-50 border border-red-200 rounded-lg"
+                      >
+                        <div className="flex items-start gap-3">
+                          <span className="w-6 h-6 bg-red-200 rounded-full flex items-center justify-center text-xs font-medium text-red-700 flex-shrink-0">
+                            {index + 1}
+                          </span>
+                          <div>
+                            <span className="text-sm text-slate-800">{item.question}</span>
+                            {item.remark && (
+                              <p className="text-xs text-slate-500 mt-1">备注：{item.remark}</p>
+                            )}
+                          </div>
+                        </div>
+                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700 flex-shrink-0">
+                          不合格
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div>
-                <h4 className="text-sm font-semibold text-slate-700 mb-3">自查项目明细</h4>
+                <h4 className="text-sm font-semibold text-slate-700 mb-3">全部自查项目</h4>
                 <div className="space-y-2">
                   {selectedRecord.items.map((item: any, index: number) => (
                     <div
                       key={item.id}
-                      className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"
+                      className={`flex items-center justify-between p-3 rounded-lg ${
+                        item.result === '不合格' ? 'bg-red-50' : 'bg-slate-50'
+                      }`}
                     >
                       <div className="flex items-center gap-3">
-                        <span className="w-6 h-6 bg-slate-200 rounded-full flex items-center justify-center text-xs font-medium text-slate-600">
+                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                          item.result === '不合格'
+                            ? 'bg-red-200 text-red-700'
+                            : 'bg-slate-200 text-slate-600'
+                        }`}>
                           {index + 1}
                         </span>
                         <span className="text-sm text-slate-800">{item.question}</span>
@@ -692,6 +842,84 @@ ${record.reviewComment || '暂无审核意见'}
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showConvertConfirm && selectedRecord && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-hidden shadow-2xl">
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white">确认转隐患</h3>
+                <p className="text-amber-100 text-sm">将为以下不合格项目生成隐患整改记录</p>
+              </div>
+              <button
+                onClick={() => setShowConvertConfirm(false)}
+                className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-white" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)] space-y-4">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="text-sm text-amber-800">
+                  <span className="font-medium">单位名称：</span>{selectedRecord.unitName}
+                </p>
+                <p className="text-sm text-amber-800 mt-1">
+                  <span className="font-medium">自查日期：</span>{selectedRecord.checkDate}
+                </p>
+                <p className="text-sm text-amber-800 mt-1">
+                  <span className="font-medium">检查人：</span>{selectedRecord.checker}
+                </p>
+                <p className="text-sm text-amber-800 mt-1">
+                  <span className="font-medium">整改期限：</span>{addDays(selectedRecord.checkDate, 7)}
+                </p>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 mb-3">
+                  将生成的隐患列表 ({getUnqualifiedItems(selectedRecord).length} 项)
+                </h4>
+                <div className="space-y-2">
+                  {getUnqualifiedItems(selectedRecord).map((item: any, index: number) => (
+                    <div
+                      key={item.id}
+                      className="p-3 bg-slate-50 border border-slate-200 rounded-lg"
+                    >
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium text-slate-800">{item.question}</p>
+                          {item.remark && (
+                            <p className="text-xs text-slate-500 mt-1">备注：{item.remark}</p>
+                          )}
+                          <p className="text-xs text-slate-500 mt-1">
+                            隐患等级：一般 | 状态：待整改
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
+              <button
+                onClick={() => setShowConvertConfirm(false)}
+                className="px-5 py-2.5 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-100 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConvertToHazards}
+                className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg text-sm hover:from-amber-600 hover:to-orange-600 transition-all"
+              >
+                确认生成
+              </button>
             </div>
           </div>
         </div>

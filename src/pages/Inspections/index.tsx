@@ -25,7 +25,7 @@ import { StatusTag } from '@/components/common/StatusTag';
 import { StatsCard } from '@/components/common/StatsCard';
 import { mockUnits, mockCheckLists } from '@/utils/mock';
 import { useAppStore } from '@/store';
-import type { InspectionPlan, CheckList, CheckItem, PlanType } from '@/types';
+import type { InspectionPlan, CheckList, CheckItem, PlanType, Hazard } from '@/types';
 import { cn } from '@/lib/utils';
 
 type ViewMode = 'calendar' | 'table';
@@ -42,7 +42,8 @@ export default function InspectionsPage() {
     units,
     addInspectionPlan,
     updateInspectionPlan,
-    deleteInspectionPlan
+    deleteInspectionPlan,
+    addHazard
   } = useAppStore();
 
   const [viewMode, setViewMode] = useState<ViewMode>('table');
@@ -56,6 +57,8 @@ export default function InspectionsPage() {
   const [planToDelete, setPlanToDelete] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('全部');
+  const [showHazardConfirm, setShowHazardConfirm] = useState(false);
+  const [pendingHazards, setPendingHazards] = useState<Hazard[]>([]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -220,12 +223,91 @@ export default function InspectionsPage() {
     }
 
     const today = new Date().toISOString().split('T')[0];
-    const isCompleted = today >= selectedPlan.endDate;
+    const deadlineDate = new Date();
+    deadlineDate.setDate(deadlineDate.getDate() + 7);
+    const deadline = deadlineDate.toISOString().split('T')[0];
 
+    const firstUnitId = selectedPlan.unitIds[0];
+    const firstUnit = units.find((u) => u.id === firstUnitId) || mockUnits.find((u) => u.id === firstUnitId);
+    const unitName = firstUnit?.name || '';
+    const responsiblePerson = selectedPlan.inspector || '待指派';
+
+    const unqualifiedItems = mockCheckLists[0].items
+      .map((item) => {
+        const answer = answers.find((a) => a.itemId === item.id);
+        const isUnqualified = answer?.answer === '不合格' || (answer?.remark && answer.remark.includes('隐患'));
+        return { item, answer, isUnqualified };
+      })
+      .filter(({ isUnqualified }) => isUnqualified);
+
+    if (unqualifiedItems.length > 0) {
+      const hazards: Hazard[] = unqualifiedItems.map(({ item, answer }) => {
+        const descriptionParts = [item.question];
+        if (answer?.answer === '不合格') {
+          descriptionParts.push('检查结果：不合格');
+        }
+        if (answer?.remark) {
+          descriptionParts.push(`备注：${answer.remark}`);
+        }
+        const hasSeriousIssue = answer?.remark && (answer.remark.includes('重大') || answer.remark.includes('严重'));
+        return {
+          id: `h${Date.now()}-${item.id}`,
+          unitId: firstUnitId,
+          inspectionId: selectedPlan.id,
+          description: descriptionParts.join('；'),
+          location: unitName,
+          level: hasSeriousIssue ? '较大' : '一般',
+          images: ['/inspection_hazard.jpg'],
+          status: '待整改',
+          foundDate: today,
+          deadline: deadline,
+          responsiblePerson: responsiblePerson,
+          responsiblePhone: ''
+        };
+      });
+
+      setPendingHazards(hazards);
+      setShowHazardConfirm(true);
+    } else {
+      const isCompleted = today >= selectedPlan.endDate;
+      updateInspectionPlan(selectedPlan.id, {
+        status: isCompleted ? '已完成' : '进行中'
+      });
+      setShowInspectionForm(false);
+      setSelectedPlan(null);
+    }
+  };
+
+  const handleConfirmHazards = () => {
+    if (!selectedPlan) return;
+
+    pendingHazards.forEach((hazard) => {
+      addHazard(hazard);
+    });
+
+    const today = new Date().toISOString().split('T')[0];
+    const isCompleted = today >= selectedPlan.endDate;
     updateInspectionPlan(selectedPlan.id, {
       status: isCompleted ? '已完成' : '进行中'
     });
 
+    setShowHazardConfirm(false);
+    setPendingHazards([]);
+    setShowInspectionForm(false);
+    setSelectedPlan(null);
+  };
+
+  const handleCancelHazards = () => {
+    if (!selectedPlan) return;
+
+    const today = new Date().toISOString().split('T')[0];
+    const isCompleted = today >= selectedPlan.endDate;
+    updateInspectionPlan(selectedPlan.id, {
+      status: isCompleted ? '已完成' : '进行中'
+    });
+
+    setShowHazardConfirm(false);
+    setPendingHazards([]);
     setShowInspectionForm(false);
     setSelectedPlan(null);
   };
@@ -953,6 +1035,81 @@ export default function InspectionsPage() {
               >
                 <Save className="w-4 h-4" />
                 提交检查
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showHazardConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                  <AlertCircle className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-800">发现隐患项</h3>
+                  <p className="text-sm text-slate-500 mt-0.5">检测到 {pendingHazards.length} 个不合格项，是否转为隐患整改？</p>
+                </div>
+              </div>
+              <button
+                onClick={handleCancelHazards}
+                className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-3">
+              {pendingHazards.map((hazard, index) => (
+                <div key={hazard.id} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                  <div className="flex items-start gap-3">
+                    <span className="w-6 h-6 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0">
+                      {index + 1}
+                    </span>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-slate-800 mb-2">{hazard.description}</p>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="inline-flex items-center px-2 py-1 rounded bg-white border border-slate-200 text-slate-600">
+                          <Building2 className="w-3 h-3 mr-1" />
+                          {hazard.location}
+                        </span>
+                        <span className={cn(
+                          'inline-flex items-center px-2 py-1 rounded',
+                          hazard.level === '较大' ? 'bg-orange-100 text-orange-700' : 'bg-amber-100 text-amber-700'
+                        )}>
+                          {hazard.level}隐患
+                        </span>
+                        <span className="inline-flex items-center px-2 py-1 rounded bg-blue-100 text-blue-700">
+                          <Clock className="w-3 h-3 mr-1" />
+                          整改期限：{hazard.deadline}
+                        </span>
+                        <span className="inline-flex items-center px-2 py-1 rounded bg-slate-100 text-slate-600">
+                          <User className="w-3 h-3 mr-1" />
+                          责任人：{hazard.responsiblePerson}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-6 border-t border-slate-200 flex justify-end gap-3 flex-shrink-0">
+              <button
+                onClick={handleCancelHazards}
+                className="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                暂不生成
+              </button>
+              <button
+                onClick={handleConfirmHazards}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                <Check className="w-4 h-4" />
+                确认生成隐患
               </button>
             </div>
           </div>

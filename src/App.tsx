@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { Layout } from "@/components/layout";
 import RiskMapPage from "@/pages/RiskMap";
+import TodoPage from "@/pages/Todo";
 import Units from "@/pages/Units";
 import InspectionsPage from "@/pages/Inspections";
 import HazardsPage from "@/pages/Hazards";
@@ -15,6 +16,7 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<RiskMapPage />} />
+          <Route path="/todo" element={<TodoPage />} />
           <Route path="/units" element={<Units />} />
           <Route path="/inspections" element={<InspectionsPage />} />
           <Route path="/hazards" element={<HazardsPage />} />

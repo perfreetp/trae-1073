@@ -65,6 +65,15 @@ export interface CheckList {
   createdAt: string;
 }
 
+export interface RecheckRecord {
+  id: string;
+  date: string;
+  type: '隐患登记' | '分派整改' | '整改提交' | '复查通过' | '复查不通过';
+  description: string;
+  operator: string;
+  comment?: string;
+}
+
 export interface Hazard {
   id: string;
   unitId: string;
@@ -83,6 +92,8 @@ export interface Hazard {
   recheckDate?: string;
   recheckResult?: '通过' | '不通过';
   rechecker?: string;
+  recheckComment?: string;
+  recheckRecords?: RecheckRecord[];
 }
 
 export interface Report {

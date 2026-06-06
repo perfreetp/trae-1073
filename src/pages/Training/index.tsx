@@ -41,6 +41,12 @@ import { cn } from '@/lib/utils';
 
 type TabType = 'trainings' | 'exams' | 'drills';
 
+interface AttendeeFormItem {
+  name: string;
+  unit: string;
+  phone: string;
+}
+
 export default function TrainingPage() {
   const [activeTab, setActiveTab] = useState<TabType>('trainings');
   const [selectedTraining, setSelectedTraining] = useState<Training | null>(null);
@@ -54,6 +60,7 @@ export default function TrainingPage() {
   const [showAddTrainingModal, setShowAddTrainingModal] = useState(false);
   const [showSignInModal, setShowSignInModal] = useState(false);
   const [showAddDrillModal, setShowAddDrillModal] = useState(false);
+  const [showAddExamScoreModal, setShowAddExamScoreModal] = useState(false);
 
   const {
     trainings,
@@ -64,7 +71,8 @@ export default function TrainingPage() {
     updateTraining,
     addAttendeeRecord,
     updateAttendeeRecord,
-    addDrillRecord
+    addDrillRecord,
+    addExamScore
   } = useAppStore();
 
   const totalTrainings = trainings.length;
@@ -116,12 +124,30 @@ export default function TrainingPage() {
     participants: number;
     duration: number;
     description?: string;
+    attendees: AttendeeFormItem[];
   }) => {
+    const { attendees, ...trainingData } = data;
+    
     addTraining({
-      ...data,
-      attendeeList: [],
+      ...trainingData,
+      attendeeList: attendees.map((a) => a.name),
       materials: []
     });
+
+    const state = useAppStore.getState();
+    const newTraining = state.trainings[state.trainings.length - 1];
+    
+    attendees.forEach((attendee) => {
+      if (attendee.name.trim()) {
+        addAttendeeRecord({
+          trainingId: newTraining.id,
+          name: attendee.name,
+          unit: attendee.unit,
+          status: '未签到'
+        });
+      }
+    });
+
     setShowAddTrainingModal(false);
   };
 
@@ -491,13 +517,22 @@ ${scores.map((s, idx) => `${idx + 1}. ${s.userName} (${s.unit}) - ${s.score}/${s
                     查看培训考试成绩，统计分析培训效果
                   </p>
                 </div>
-                <button
-                  onClick={exportExamScores}
-                  className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
-                >
-                  <Download className="w-4 h-4" />
-                  <span className="text-sm font-medium">导出成绩</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowAddExamScoreModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors shadow-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="text-sm font-medium">补录成绩</span>
+                  </button>
+                  <button
+                    onClick={exportExamScores}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span className="text-sm font-medium">导出成绩</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -752,6 +787,23 @@ ${scores.map((s, idx) => `${idx + 1}. ${s.userName} (${s.unit}) - ${s.score}/${s
         <AddDrillModal
           onClose={() => setShowAddDrillModal(false)}
           onSubmit={handleAddDrill}
+        />
+      )}
+
+      {showAddExamScoreModal && (
+        <AddExamScoreModal
+          trainings={trainings}
+          onClose={() => setShowAddExamScoreModal(false)}
+          onSubmit={(data) => {
+            addExamScore({
+              ...data,
+              examId: 'e' + Date.now(),
+              isPassed: data.score >= data.passScore,
+              submitTime: new Date().toLocaleString(),
+              duration: 0
+            });
+            setShowAddExamScoreModal(false);
+          }}
         />
       )}
     </div>
@@ -1221,6 +1273,53 @@ function DrillDetailModal({
   drill: DrillRecord;
   onClose: () => void;
 }) {
+  const exportDrillReport = () => {
+    const content = `消防应急疏散演练报告
+
+演练基本信息
+==================
+演练标题：${drill.title}
+演练类型：${drill.type}
+演练单位：${drill.unitName}
+演练时间：${drill.date}
+演练地点：${drill.location}
+参演人数：${drill.participants} 人
+演练时长：${drill.duration} 分钟
+评估人：${drill.evaluator}
+评估结果：${drill.result}
+
+演练概况
+==================
+${drill.description}
+
+存在问题
+==================
+${drill.problems || '无'}
+
+改进措施
+==================
+${drill.improvement || '无'}
+
+评估结论
+==================
+经评估，本次演练整体${drill.result === '优秀' ? '表现优秀，达到预期效果' : 
+  drill.result === '良好' ? '表现良好，基本达到预期效果' :
+  drill.result === '合格' ? '表现合格，基本满足要求' : '未达到合格标准，需重新组织演练'}。
+针对演练中发现的问题，已提出相应改进措施，要求相关单位限期落实整改，确保消防安全。
+
+报告生成时间：${new Date().toLocaleString()}
+编制单位：XX街道消防办`;
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const safeTitle = drill.title.replace(/[<>:"/\\|?*]/g, '_');
+    link.download = `${drill.date}_${safeTitle}_演练报告.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden">
@@ -1312,7 +1411,11 @@ function DrillDetailModal({
           >
             关闭
           </button>
-          <button className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+          <button
+            onClick={exportDrillReport}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" />
             导出报告
           </button>
         </div>
@@ -1334,6 +1437,7 @@ function AddTrainingModal({
     participants: number;
     duration: number;
     description?: string;
+    attendees: AttendeeFormItem[];
   }) => void;
 }) {
   const [formData, setFormData] = useState({
@@ -1346,9 +1450,28 @@ function AddTrainingModal({
     description: ''
   });
 
+  const [attendees, setAttendees] = useState<AttendeeFormItem[]>([]);
+
+  const addAttendee = () => {
+    setAttendees([...attendees, { name: '', unit: '', phone: '' }]);
+  };
+
+  const removeAttendee = (index: number) => {
+    setAttendees(attendees.filter((_, i) => i !== index));
+  };
+
+  const updateAttendee = (index: number, field: keyof AttendeeFormItem, value: string) => {
+    const newAttendees = [...attendees];
+    newAttendees[index][field] = value;
+    setAttendees(newAttendees);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    onSubmit({
+      ...formData,
+      attendees
+    });
   };
 
   return (
@@ -1466,6 +1589,73 @@ function AddTrainingModal({
               className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
               placeholder="请输入培训简介"
             />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-slate-700">
+                参训人员
+              </label>
+              <button
+                type="button"
+                onClick={addAttendee}
+                className="flex items-center gap-1 text-sm text-red-600 hover:text-red-700 font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                添加人员
+              </button>
+            </div>
+            <div className="space-y-3">
+              {attendees.map((attendee, index) => (
+                <div key={index} className="p-3 bg-slate-50 rounded-lg space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-500">人员 {index + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeAttendee(index)}
+                      className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <input
+                        type="text"
+                        value={attendee.name}
+                        onChange={(e) => updateAttendee(index, 'name', e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white"
+                        placeholder="姓名"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        value={attendee.unit}
+                        onChange={(e) => updateAttendee(index, 'unit', e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white"
+                        placeholder="单位"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <input
+                      type="text"
+                      value={attendee.phone}
+                      onChange={(e) => updateAttendee(index, 'phone', e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white"
+                      placeholder="联系电话"
+                    />
+                  </div>
+                </div>
+              ))}
+              {attendees.length === 0 && (
+                <div className="text-center py-6 border-2 border-dashed border-slate-200 rounded-lg">
+                  <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm text-slate-400">点击上方"添加人员"按钮添加参训人员</p>
+                </div>
+              )}
+            </div>
           </div>
         </form>
 
@@ -1753,6 +1943,186 @@ function AddDrillModal({
             className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
           >
             保存记录
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddExamScoreModal({
+  trainings,
+  onClose,
+  onSubmit
+}: {
+  trainings: Training[];
+  onClose: () => void;
+  onSubmit: (data: {
+    trainingId?: string;
+    examTitle: string;
+    userName: string;
+    unit: string;
+    score: number;
+    totalScore: number;
+    passScore: number;
+  }) => void;
+}) {
+  const [formData, setFormData] = useState({
+    trainingId: '',
+    examTitle: '',
+    userName: '',
+    unit: '',
+    score: 0,
+    totalScore: 100,
+    passScore: 60
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit({
+      ...formData,
+      trainingId: formData.trainingId || undefined
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden">
+        <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-800">补录成绩</h3>
+            <p className="text-sm text-slate-500 mt-1">手动录入考试成绩记录</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-140px)] space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              所属培训
+            </label>
+            <select
+              value={formData.trainingId}
+              onChange={(e) => setFormData({ ...formData, trainingId: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent bg-white"
+            >
+              <option value="">请选择培训（可选）</option>
+              {trainings.map((training) => (
+                <option key={training.id} value={training.id}>
+                  {training.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              考试名称 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.examTitle}
+              onChange={(e) => setFormData({ ...formData, examTitle: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              placeholder="请输入考试名称"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                人员姓名 <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.userName}
+                onChange={(e) => setFormData({ ...formData, userName: e.target.value })}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                placeholder="请输入姓名"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                单位 <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.unit}
+                onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                placeholder="请输入单位"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                分数 <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                required
+                min="0"
+                value={formData.score || ''}
+                onChange={(e) => setFormData({ ...formData, score: parseInt(e.target.value) || 0 })}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                placeholder="分数"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                总分 <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                required
+                min="1"
+                value={formData.totalScore || ''}
+                onChange={(e) => setFormData({ ...formData, totalScore: parseInt(e.target.value) || 0 })}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                placeholder="总分"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                及格线 <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                required
+                min="0"
+                value={formData.passScore || ''}
+                onChange={(e) => setFormData({ ...formData, passScore: parseInt(e.target.value) || 0 })}
+                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                placeholder="及格线"
+              />
+            </div>
+          </div>
+        </form>
+
+        <div className="p-6 border-t border-slate-200 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            取消
+          </button>
+          <button
+            type="submit"
+            onClick={handleSubmit}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            保存成绩
           </button>
         </div>
       </div>
